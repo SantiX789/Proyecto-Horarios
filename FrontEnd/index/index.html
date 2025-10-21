@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asignación de Horarios</title>
+    <style>
+        
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f7f9fc;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h2, h3 {
+            color: #333;
+        }
+
+        form {
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        label {
+            font-size: 14px;
+            color: #555;
+        }
+
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #1d72b8;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background-color: #155a8a;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+            color: #333;
+        }
+
+        th {
+            background-color: #1d72b8;
+            color: white;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        input[type="checkbox"] {
+            transform: scale(1.3);
+        }
+
+        .asignado {
+            background-color: #cce5ff;
+        }
+
+        td.asignado:hover {
+            background-color: #aacbff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        @media (max-width: 768px) {
+            table {
+                font-size: 12px;
+            }
+            button {
+                width: 100%;
+                margin-top: 10px;
+            }
+        }
+    
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Formulario para asignar horarios</h2>
+        <form>
+            <label for="curso">Curso:</label>
+            <select id="curso" name="curso">
+                <option value="1A">1A</option>
+                <option value="1B">1B</option>
+                <option value="6Electronica">6 Electrónica</option>
+            </select><br>
+
+            <label for="profesor">Nombre del profesor:</label>
+            <input type="text" id="profesor" name="profesor"><br>
+
+            <label for="materia">Materia:</label>
+            <input type="text" id="materia" name="materia"><br>
+
+            <label for="horas-semanales">Horas semanales (en bloques de 40 minutos):</label>
+            <input type="number" id="horas-semanales" name="horas-semanales" min="1"><br>
+
+            <<h3>Disponibilidad</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hora</th>
+                        <th>Lunes</th>
+                        <th>Martes</th>
+                        <th>Miércoles</th>
+                        <th>Jueves</th>
+                        <th>Viernes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>07:00 a 07:40</td><td><input type="checkbox" id="check-Lunes-07:00"></td><td><input type="checkbox" id="check-Martes-07:00"></td><td><input type="checkbox" id="check-Miércoles-07:00"></td><td><input type="checkbox" id="check-Jueves-07:00"></td><td><input type="checkbox" id="check-Viernes-07:00"></td></tr>
+                    <tr><td>07:40 a 08:20</td><td><input type="checkbox" id="check-Lunes-07:40"></td><td><input type="checkbox" id="check-Martes-07:40"></td><td><input type="checkbox" id="check-Miércoles-07:40"></td><td><input type="checkbox" id="check-Jueves-07:40"></td><td><input type="checkbox" id="check-Viernes-07:40"></td></tr>
+                    <tr><td>08:20 a 09:00</td><td><input type="checkbox" id="check-Lunes-08:20"></td><td><input type="checkbox" id="check-Martes-08:20"></td><td><input type="checkbox" id="check-Miércoles-08:20"></td><td><input type="checkbox" id="check-Jueves-08:20"></td><td><input type="checkbox" id="check-Viernes-08:20"></td></tr>
+                    <tr><td>09:00 a 09:40</td><td><input type="checkbox" id="check-Lunes-09:00"></td><td><input type="checkbox" id="check-Martes-09:00"></td><td><input type="checkbox" id="check-Miércoles-09:00"></td><td><input type="checkbox" id="check-Jueves-09:00"></td><td><input type="checkbox" id="check-Viernes-09:00"></td></tr>
+                    <tr><td>09:40 a 10:20</td><td><input type="checkbox" id="check-Lunes-09:40"></td><td><input type="checkbox" id="check-Martes-09:40"></td><td><input type="checkbox" id="check-Miércoles-09:40"></td><td><input type="checkbox" id="check-Jueves-09:40"></td><td><input type="checkbox" id="check-Viernes-09:40"></td></tr>
+                    <tr><td>10:20 a 11:00</td><td><input type="checkbox" id="check-Lunes-10:20"></td><td><input type="checkbox" id="check-Martes-10:20"></td><td><input type="checkbox" id="check-Miércoles-10:20"></td><td><input type="checkbox" id="check-Jueves-10:20"></td><td><input type="checkbox" id="check-Viernes-10:20"></td></tr>
+                    <tr><td>11:00 a 11:40</td><td><input type="checkbox" id="check-Lunes-11:00"></td><td><input type="checkbox" id="check-Martes-11:00"></td><td><input type="checkbox" id="check-Miércoles-11:00"></td><td><input type="checkbox" id="check-Jueves-11:00"></td><td><input type="checkbox" id="check-Viernes-11:00"></td></tr>
+                    <tr><td>11:40 a 12:20</td><td><input type="checkbox" id="check-Lunes-11:40"></td><td><input type="checkbox" id="check-Martes-11:40"></td><td><input type="checkbox" id="check-Miércoles-11:40"></td><td><input type="checkbox" id="check-Jueves-11:40"></td><td><input type="checkbox" id="check-Viernes-11:40"></td></tr>
+                    <tr><td>12:20 a 13:00</td><td><input type="checkbox" id="check-Lunes-12:20"></td><td><input type="checkbox" id="check-Martes-12:20"></td><td><input type="checkbox" id="check-Miércoles-12:20"></td><td><input type="checkbox" id="check-Jueves-12:20"></td><td><input type="checkbox" id="check-Viernes-12:20"></td></tr>
+                    <tr><td>13:00 a 13:40</td><td><input type="checkbox" id="check-Lunes-13:00"></td><td><input type="checkbox" id="check-Martes-13:00"></td><td><input type="checkbox" id="check-Miércoles-13:00"></td><td><input type="checkbox" id="check-Jueves-13:00"></td><td><input type="checkbox" id="check-Viernes-13:00"></td></tr>
+                    <tr><td>13:40 a 14:20</td><td><input type="checkbox" id="check-Lunes-13:40"></td><td><input type="checkbox" id="check-Martes-13:40"></td><td><input type="checkbox" id="check-Miércoles-13:40"></td><td><input type="checkbox" id="check-Jueves-13:40"></td><td><input type="checkbox" id="check-Viernes-13:40"></td></tr>
+                    <tr><td>14:20 a 15:00</td><td><input type="checkbox" id="check-Lunes-14:20"></td><td><input type="checkbox" id="check-Martes-14:20"></td><td><input type="checkbox" id="check-Miércoles-14:20"></td><td><input type="checkbox" id="check-Jueves-14:20"></td><td><input type="checkbox" id="check-Viernes-14:20"></td></tr>
+                    <tr><td>15:00 a 15:40</td><td><input type="checkbox" id="check-Lunes-15:00"></td><td><input type="checkbox" id="check-Martes-15:00"></td><td><input type="checkbox" id="check-Miércoles-15:00"></td><td><input type="checkbox" id="check-Jueves-15:00"></td><td><input type="checkbox" id="check-Viernes-15:00"></td></tr>
+                    <tr><td>15:40 a 16:20</td><td><input type="checkbox" id="check-Lunes-15:40"></td><td><input type="checkbox" id="check-Martes-15:40"></td><td><input type="checkbox" id="check-Miércoles-15:40"></td><td><input type="checkbox" id="check-Jueves-15:40"></td><td><input type="checkbox" id="check-Viernes-15:40"></td></tr>
+                    <tr><td>16:20 a 17:00</td><td><input type="checkbox" id="check-Lunes-16:20"></td><td><input type="checkbox" id="check-Martes-16:20"></td><td><input type="checkbox" id="check-Miércoles-16:20"></td><td><input type="checkbox" id="check-Jueves-16:20"></td><td><input type="checkbox" id="check-Viernes-16:20"></td></tr>
+                    <tr><td>17:00 a 17:40</td><td><input type="checkbox" id="check-Lunes-17:00"></td><td><input type="checkbox" id="check-Martes-17:00"></td><td><input type="checkbox" id="check-Miércoles-17:00"></td><td><input type="checkbox" id="check-Jueves-17:00"></td><td><input type="checkbox" id="check-Viernes-17:00"></td></tr>
+                    <tr><td>17:40 a 18:20</td><td><input type="checkbox" id="check-Lunes-17:40"></td><td><input type="checkbox" id="check-Martes-17:40"></td><td><input type="checkbox" id="check-Miércoles-17:40"></td><td><input type="checkbox" id="check-Jueves-17:40"></td><td><input type="checkbox" id="check-Viernes-17:40"></td></tr>
+                    <tr><td>18:20 a 19:00</td><td><input type="checkbox" id="check-Lunes-18:20"></td><td><input type="checkbox" id="check-Martes-18:20"></td><td><input type="checkbox" id="check-Miércoles-18:20"></td><td><input type="checkbox" id="check-Jueves-18:20"></td><td><input type="checkbox" id="check-Viernes-18:20"></td></tr>
+                    <tr><td>19:00 a 19:40</td><td><input type="checkbox" id="check-Lunes-19:00"></td><td><input type="checkbox" id="check-Martes-19:00"></td><td><input type="checkbox" id="check-Miércoles-19:00"></td><td><input type="checkbox" id="check-Jueves-19:00"></td><td><input type="checkbox" id="check-Viernes-19:00"></td></tr>
+                    <tr><td>19:40 a 20:20</td><td><input type="checkbox" id="check-Lunes-19:40"></td><td><input type="checkbox" id="check-Martes-19:40"></td><td><input type="checkbox" id="check-Miércoles-19:40"></td><td><input type="checkbox" id="check-Jueves-19:40"></td><td><input type="checkbox" id="check-Viernes-19:40"></td></tr>
+                </tbody>
+            </table>
+
+            <button type="button" onclick="generarHorario()">Generar Horario</button>
+            <button type="button" onclick="crearExcel()">Descargar Excel</button>
+        </form>
+
+        <h2>Horario del curso</h2>
+        <table id="tabla-horario">
+            <thead>
+                <tr>
+                    <th>Hora</th>
+                    <th>Lunes</th>
+                    <th>Martes</th>
+                    <th>Miércoles</th>
+                    <th>Jueves</th>
+                    <th>Viernes</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+        <button id="borrarHorarios" onclick="borrarHorarios()">Borrar todos los horarios</button>
+
+        <select id="profesorSelect">
+            </select>
+        <button id="borrarProfesor" onclick="borrarProfesor()">Borrar Profesor</button>
+    </div>
+
+    <script>
+        // --- Constantes ---
+        const API_URL = "http://127.0.0.1:8000"; // La URL donde corre tu backend de Python
+        const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+        const HORARIOS_RANGOS = [
+            "07:00 a 07:40", "07:40 a 08:20", "08:20 a 09:00", "09:00 a 09:40",
+            "09:40 a 10:20", "10:20 a 11:00", "11:00 a 11:40", "11:40 a 12:20",
+            "12:20 a 13:00", "13:00 a 13:40", "13:40 a 14:20", "14:20 a 15:00",
+            "15:00 a 15:40", "15:40 a 16:20", "16:20 a 17:00", "17:00 a 17:40",
+            "17:40 a 18:20", "18:20 a 19:00", "19:00 a 19:40" 
+            // "19:40 a 20:20" -> faltaba en tu const original
+        ];
+        const HORARIOS_INICIO = [
+            "07:00", "07:40", "08:20", "09:00", "09:40", "10:20", "11:00", "11:40",
+            "12:20", "13:00", "13:40", "14:20", "15:00", "15:40", "16:20", "17:00",
+            "17:40", "18:20", "19:00"
+        ];
+
+        // --- Event Listener ---
+        document.getElementById("curso").addEventListener("change", () => {
+            const cursoSeleccionado = document.getElementById("curso").value;
+            actualizarVista(cursoSeleccionado);
+        });
+
+        window.onload = () => {
+            const cursoSeleccionado = document.getElementById("curso").value;
+            actualizarVista(cursoSeleccionado);
+        };
+        
+        // --- Función Principal de Actualización ---
+        async function actualizarVista(curso) {
+            await actualizarTablaHorario(curso);
+            await actualizarSelectProfesores(curso);
+        }
+
+        // --- Funciones de API ---
+
+        async function actualizarTablaHorario(curso) {
+            const tablaHorario = document.getElementById("tabla-horario").getElementsByTagName('tbody')[0];
+            tablaHorario.innerHTML = ""; // Limpiar tabla
+
+            // 1. Llamar a la API para obtener los datos
+            const response = await fetch(`${API_URL}/api/horarios/${curso}`);
+            const horariosDelCurso = await response.json(); // Esto es el { "07:00 a 07:40": { "Lunes": "Profe..." } }
+
+            // 2. Dibujar la tabla (lógica movida de generarHorario)
+            HORARIOS_RANGOS.forEach(horaRango => {
+                const fila = document.createElement("tr");
+                const celdaHora = document.createElement("td");
+                celdaHora.textContent = horaRango;
+                fila.appendChild(celdaHora);
+
+                DIAS.forEach(dia => {
+                    const celda = document.createElement("td");
+                    
+                    // Buscar si hay datos para esta celda
+                    if (horariosDelCurso[horaRango] && horariosDelCurso[horaRango][dia]) {
+                        celda.textContent = horariosDelCurso[horaRango][dia];
+                        celda.classList.add("asignado");
+                    }
+                    
+                    fila.appendChild(celda);
+                });
+                tablaHorario.appendChild(fila);
+            });
+        }
+
+        async function actualizarSelectProfesores(curso) {
+            const profesorSelect = document.getElementById("profesorSelect");
+            profesorSelect.innerHTML = ""; // Limpiar select
+
+            // 1. Llamar a la API
+            const response = await fetch(`${API_URL}/api/profesores/${curso}`);
+            const profesores = await response.json(); // Esto es una lista ["Profesor 1", "Profesor 2"]
+
+            // 2. Llenar el select
+            profesores.forEach(profesor => {
+                const opcionProfesor = document.createElement('option');
+                opcionProfesor.value = profesor;
+                opcionProfesor.textContent = profesor;
+                profesorSelect.appendChild(opcionProfesor);
+            });
+        }
+
+        async function generarHorario() {
+            // 1. Recolectar datos del formulario
+            const curso = document.getElementById("curso").value;
+            const profesor = document.getElementById("profesor").value;
+            const materia = document.getElementById("materia").value;
+            const horasSemanales = parseInt(document.getElementById("horas-semanales").value, 10);
+            
+            // Recolectar disponibilidad (los checkboxes marcados)
+            const disponibilidad = [];
+            HORARIOS_INICIO.forEach(horaInicio => {
+                DIAS.forEach(dia => {
+                    const checkboxId = `check-${dia}-${horaInicio}`;
+                    const checkbox = document.getElementById(checkboxId);
+                    if (checkbox && checkbox.checked) {
+                        disponibilidad.push(`${dia}-${horaInicio}`); // Ej: "Lunes-07:00"
+                    }
+                });
+            });
+
+            // Validar
+            if (!profesor || !materia || !horasSemanales) {
+                alert("Por favor, completa los campos de profesor, materia y horas.");
+                return;
+            }
+
+            // 2. Crear el "paquete" de datos (request body)
+            const requestData = {
+                curso: curso,
+                profesor: profesor,
+                materia: materia,
+                horasSemanales: horasSemanales,
+                disponibilidad: disponibilidad
+            };
+
+            // 3. Enviar los datos al Backend (Python)
+            const response = await fetch(`${API_URL}/api/horarios`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+
+            const result = await response.json(); // { mensaje: "...", faltantes: ... }
+
+            if (result.faltantes > 0) {
+                alert(`No se pudo asignar todas las horas. Faltan ${result.faltantes} bloques por asignar.`);
+            } else {
+                alert(result.mensaje);
+            }
+
+            // 4. Limpiar formulario
+            document.getElementById("profesor").value = "";
+            document.getElementById("materia").value = "";
+            document.getElementById("horas-semanales").value = "";
+            document.querySelectorAll("input[type='checkbox']").forEach(checkbox => checkbox.checked = false);
+            
+            // 5. Actualizar la vista para mostrar los cambios
+            actualizarVista(curso);
+        }
+
+        async function borrarHorarios() {
+            const curso = document.getElementById("curso").value;
+            if (!confirm(`¿Estás seguro de que quieres borrar todos los horarios del curso ${curso}?`)) {
+                return;
+            }
+
+            // 1. Llamar a la API de borrado
+            await fetch(`${API_URL}/api/horarios/${curso}`, {
+                method: 'DELETE'
+            });
+
+            // 2. Actualizar la vista
+            actualizarVista(curso);
+            alert(`Horarios del curso ${curso} han sido borrados.`);
+        }
+
+        async function borrarProfesor() {
+            const curso = document.getElementById("curso").value;
+            const profesorSeleccionado = document.getElementById('profesorSelect').value;
+
+            if (!profesorSeleccionado) {
+                alert("Por favor, selecciona un profesor de la lista.");
+                return;
+            }
+            
+            if (!confirm(`¿Estás seguro de que quieres borrar al profesor ${profesorSeleccionado} de todos los horarios del curso ${curso}?`)) {
+                return;
+            }
+
+            // 1. Llamar a la API de borrado de profesor
+            await fetch(`${API_URL}/api/profesor/${curso}/${profesorSeleccionado}`, {
+                method: 'DELETE'
+            });
+            
+            // 2. Actualizar la vista
+            actualizarVista(curso);
+            alert(`El profesor ${profesorSeleccionado} ha sido borrado del curso ${curso}.`);
+        }
+
+        function crearExcel() {
+            // ¡Esto es mucho más simple ahora!
+            // Solo le pedimos al backend que genere el archivo.
+            window.location.href = `${API_URL}/api/export/excel`;
+        }
+
+    </script>
+</body>
+</html>
