@@ -1,7 +1,25 @@
 {
     "1A": {
-        "07:00 a 07:40": {},
-        "07:40 a 08:20": {},
-        "08:20 a 09:00": {}
+        "07:00 a 07:40": {
+            "Lunes": "hugo (base de datos)"
+        },
+        "07:40 a 08:20": {
+            "Lunes": "hugo (base de datos)",
+            "Mi\u00e9rcoles": "hugo (base de datos)",
+            "Viernes": "hugo (base de datos)",
+            "Martes": "hugo (base de datos)"
+        },
+        "08:20 a 09:00": {
+            "Martes": "hugo (base de datos)",
+            "Mi\u00e9rcoles": "hugo (base de datos)",
+            "Viernes": "hugo (base de datos)"
+        },
+        "09:00 a 09:40": {
+            "Jueves": "hugo (base de datos)",
+            "Viernes": "hugo (base de datos)"
+        },
+        "09:40 a 10:20": {
+            "Jueves": "hugo (base de datos)"
+        }
     }
 }
