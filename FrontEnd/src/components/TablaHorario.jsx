@@ -14,7 +14,7 @@ const HORARIOS_RANGOS = [
 ];
 
 // Este componente recibe el "curso" que está seleccionado en App.jsx
-function TablaHorario( { curso } ) {
+function TablaHorario( { curso, refreshKey } ) {
   // 1. Creamos un estado para guardar los datos del horario
   const [horariosDelCurso, setHorariosDelCurso] = useState({});
 
@@ -32,8 +32,7 @@ function TablaHorario( { curso } ) {
     if (curso) {
       cargarHorarioDelCurso();
     }
-  }, [curso]); // <-- La "dependencia"
-
+  }, [curso, refreshKey]); // <-- 2. Añade 'refreshKey' a las dependencias
   // 4. Tu HTML adaptado
   return (
     <>
