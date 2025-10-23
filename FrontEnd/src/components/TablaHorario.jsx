@@ -1,8 +1,9 @@
-// frontend/src/components/TablaHorario.jsx
-import { useState, useEffect } from 'react'; // ¡Importamos hooks nuevos!
+// frontend/src/components/TablaHorario.jsx (Refactorizado)
+import { useState, useEffect } from 'react';
+// 1. Importamos Table y Spinner
+import { Table, Spinner, Alert } from 'react-bootstrap';
+import { toast } from 'react-toastify';
 
-// Traemos las constantes. (Mejor si estuvieran en su propio archivo,
-// pero por ahora está bien copiarlas)
 const API_URL = "http://127.0.0.1:8000";
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 const HORARIOS_RANGOS = [
@@ -13,67 +14,90 @@ const HORARIOS_RANGOS = [
     "17:40 a 18:20", "18:20 a 19:00", "19:00 a 19:40" 
 ];
 
-// Este componente recibe el "curso" que está seleccionado en App.jsx
 function TablaHorario( { curso, refreshKey } ) {
-  // 1. Creamos un estado para guardar los datos del horario
   const [horariosDelCurso, setHorariosDelCurso] = useState({});
+  // 2. Estado de carga (UX)
+  const [isLoading, setIsLoading] = useState(false);
 
-  // 2. Esta es la función 'actualizarTablaHorario' de tu HTML
   async function cargarHorarioDelCurso() {
-    const response = await fetch(`${API_URL}/api/horarios/${curso}`);
-    const data = await response.json();
-    setHorariosDelCurso(data);
+    if (!curso) {
+      setHorariosDelCurso({});
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/horarios/${curso}`);
+      if (response.ok) {
+        const data = await response.json();
+        setHorariosDelCurso(data);
+      } else {
+        toast.error("Error al cargar el horario.");
+      }
+    } catch (error) {
+      toast.error("Error de red al cargar el horario.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
-  // 3. Este hook (useEffect) es la magia de React.
-  //    Se ejecuta automáticamente cuando el componente carga
-  //    y cada vez que la variable 'curso' cambia.
   useEffect(() => {
-    if (curso) {
-      cargarHorarioDelCurso();
-    }
-  }, [curso, refreshKey]); // <-- 2. Añade 'refreshKey' a las dependencias
-  // 4. Tu HTML adaptado
+    cargarHorarioDelCurso();
+  }, [curso, refreshKey]); // Depende de 'curso' y 'refreshKey'
+
+  // 3. Renderizado condicional (UX)
+  if (!curso) {
+    return <Alert variant="info" className="mt-3">Selecciona un curso para ver su horario.</Alert>;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="text-center mt-4">
+        <Spinner animation="border" role="status">
+          <span className="visually-hidden">Cargando horario...</span>
+        </Spinner>
+      </div>
+    );
+  }
+
+  const tieneHorarios = Object.keys(horariosDelCurso).length > 0;
+
+  if (!tieneHorarios && !isLoading) {
+    return <Alert variant="warning" className="mt-3">Este curso no tiene ningún horario generado.</Alert>;
+  }
+
+  // 4. Usamos el componente <Table> de React-Bootstrap
   return (
-    <>
-      <h2>Horario del curso</h2>
-      <table id="tabla-horario">
-        <thead>
-          <tr>
-            <th>Hora</th>
-            <th>Lunes</th>
-            <th>Martes</th>
-            <th>Miércoles</th>
-            <th>Jueves</th>
-            <th>Viernes</th>
+    <Table bordered hover responsive size="sm" className="mt-3">
+      <thead className="table-primary text-center">
+        <tr>
+          <th>Hora</th>
+          <th>Lunes</th>
+          <th>Martes</th>
+          <th>Miércoles</th>
+          <th>Jueves</th>
+          <th>Viernes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {HORARIOS_RANGOS.map(horaRango => (
+          <tr key={horaRango}>
+            <td>{horaRango}</td>
+            {DIAS.map(dia => {
+              const asignacion = horariosDelCurso[horaRango]?.[dia] || "";
+              return (
+                <td 
+                  key={dia} 
+                  className={asignacion ? "table-light" : ""}
+                >
+                  {asignacion}
+                </td>
+              )
+            })}
           </tr>
-        </thead>
-        {/* Ahora dibujamos la tabla dinámicamente usando el "estado"
-          en lugar de 'tablaHorario.innerHTML = ""' 
-        */}
-        <tbody>
-          {HORARIOS_RANGOS.map(horaRango => (
-            // Usamos .map() para crear una <tr> por cada hora
-            <tr key={horaRango}>
-              <td>{horaRango}</td>
-              {DIAS.map(dia => {
-                // Buscamos si hay datos para esta celda
-                const asignacion = horariosDelCurso[horaRango]?.[dia] || "";
-                return (
-                  <td 
-                    key={dia} 
-                    className={asignacion ? "asignado" : ""}
-                  >
-                    {asignacion}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
-  )
+        ))}
+      </tbody>
+    </Table>
+  );
 }
 
-export default TablaHorario
+export default TablaHorario;

@@ -44,7 +44,7 @@ function GestionCursos({ refreshKey }) {
     }
 
     setIsLoading(true);
-    
+
     try {
       const response = await fetch(`${API_URL}/api/cursos`, {
         method: 'POST',
@@ -62,7 +62,7 @@ function GestionCursos({ refreshKey }) {
     } catch (error) {
       toast.error("Error de red al guardar el curso.");
     }
-    
+
     setIsLoading(false);
   }
 
@@ -78,11 +78,11 @@ function GestionCursos({ refreshKey }) {
               type="text"
               placeholder="Ej: 1A"
               value={nombreCurso}
-              onChange={(e) => setNombreCurso(e.target.value)}
+              onChange={(e) => setNombreCurso(e.target.value.toUpperCase())}
               disabled={isLoading}
             />
           </Form.Group>
-          
+
           <Button variant="primary" type="submit" disabled={isLoading}>
             {isLoading ? (
               <>
@@ -100,7 +100,7 @@ function GestionCursos({ refreshKey }) {
             )}
           </Button>
         </Form>
-        
+
         <h4 className="mt-4">Cursos Existentes:</h4>
         {isListLoading ? (
           <div className="text-center">
@@ -110,9 +110,8 @@ function GestionCursos({ refreshKey }) {
           <ListGroup variant="flush">
             {cursos.length === 0 && <ListGroup.Item>No hay cursos creados.</ListGroup.Item>}
             {cursos.map(curso => (
-              <ListGroup.Item key={curso.id}>
+              <ListGroup.Item key={curso.id} className="text-center">
                 {curso.nombre}
-                <span className="text-muted ms-2" style={{fontSize: '0.8em'}}>(ID: {curso.id})</span>
               </ListGroup.Item>
             ))}
           </ListGroup>

@@ -1,9 +1,7 @@
-// frontend/src/components/GestionMaterias.jsx (Refactorizado)
 import { useState, useEffect } from 'react';
-
-// 1. Importamos los componentes de Bootstrap y Toastify
-import { Form, Button, ListGroup, Card, Spinner } from 'react-bootstrap';
 import { toast } from 'react-toastify';
+import { Form, Button, ListGroup, Card, Spinner, Badge } from 'react-bootstrap';
+
 
 const API_URL = "http://127.0.0.1:8000";
 
@@ -42,7 +40,7 @@ function GestionMaterias({ refreshKey }) {
     }
 
     setIsLoading(true);
-    
+
     try {
       const response = await fetch(`${API_URL}/api/materias`, {
         method: 'POST',
@@ -60,7 +58,7 @@ function GestionMaterias({ refreshKey }) {
     } catch (error) {
       toast.error("Error de red al guardar la materia.");
     }
-    
+
     setIsLoading(false);
   }
 
@@ -74,13 +72,13 @@ function GestionMaterias({ refreshKey }) {
             <Form.Label>Nombre de la Materia:</Form.Label>
             <Form.Control
               type="text"
-              placeholder="Ej: Matemática"
+              placeholder="Ej: MATEMÁTICA"
               value={nombreMateria}
-              onChange={(e) => setNombreMateria(e.target.value)}
+              onChange={(e) => setNombreMateria(e.target.value.toUpperCase())}
               disabled={isLoading}
             />
           </Form.Group>
-          
+
           <Button variant="primary" type="submit" disabled={isLoading}>
             {isLoading ? (
               <>
@@ -98,23 +96,31 @@ function GestionMaterias({ refreshKey }) {
             )}
           </Button>
         </Form>
-        
+
+
         <h4 className="mt-4">Materias Existentes:</h4>
         {isListLoading ? (
           <div className="text-center">
             <Spinner animation="border" />
           </div>
         ) : (
-          <ListGroup variant="flush">
+          
+          <ListGroup>
             {materias.length === 0 && <ListGroup.Item>No hay materias creadas.</ListGroup.Item>}
             {materias.map(materia => (
-              <ListGroup.Item key={materia.id}>
-                {materia.nombre}
-                <span className="text-muted ms-2" style={{fontSize: '0.8em'}}>(ID: {materia.id})</span>
+              <ListGroup.Item
+                key={materia.id}
+                
+                className="mb-2 p-3 border rounded shadow-sm d-flex justify-content-center align-items-center"
+              >
+                
+                <span className="fw-bold me-3">{materia.nombre}</span>
+                <Badge bg="info">Materia</Badge>
               </ListGroup.Item>
             ))}
           </ListGroup>
         )}
+
       </Card.Body>
     </Card>
   );
