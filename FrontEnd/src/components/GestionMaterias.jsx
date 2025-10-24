@@ -1,29 +1,27 @@
+// frontend/src/components/GestionMaterias.jsx (Refactorizado)
 import { useState, useEffect } from 'react';
-import { toast } from 'react-toastify';
 import { Form, Button, ListGroup, Card, Spinner, Badge } from 'react-bootstrap';
+import { toast } from 'react-toastify';
 
+// 1. Importamos el servicio
+import { apiFetch } from '../apiService';
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "http://127.0.0.1:8000"; // (apiService ya lo usa, pero lo dejamos por si acaso)
 
 function GestionMaterias({ refreshKey }) {
   const [materias, setMaterias] = useState([]);
   const [nombreMateria, setNombreMateria] = useState("");
-
-  // 2. Estados de carga (UX)
   const [isLoading, setIsLoading] = useState(false);
   const [isListLoading, setIsListLoading] = useState(false);
 
   async function cargarMaterias() {
     setIsListLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/materias`);
-      if (response.ok) {
-        setMaterias(await response.json());
-      } else {
-        toast.error("Error al cargar lista de materias.");
-      }
+      // 2. Usamos apiFetch
+      const data = await apiFetch('/api/materias');
+      setMaterias(data);
     } catch (error) {
-      toast.error("Error de red al cargar materias.");
+      toast.error(`Error al cargar materias: ${error.message}`);
     }
     setIsListLoading(false);
   }
@@ -40,33 +38,26 @@ function GestionMaterias({ refreshKey }) {
     }
 
     setIsLoading(true);
-
     try {
-      const response = await fetch(`${API_URL}/api/materias`, {
+      // 3. Usamos apiFetch
+      await apiFetch('/api/materias', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre: nombreMateria })
+        body: JSON.stringify({ nombre: nombreMateria.toUpperCase() })
       });
 
-      if (response.ok) {
-        toast.success("¡Materia agregada con éxito!");
-        setNombreMateria("");
-        cargarMaterias();
-      } else {
-        toast.error("Error al guardar la materia.");
-      }
+      toast.success("¡Materia agregada con éxito!");
+      setNombreMateria("");
+      cargarMaterias();
     } catch (error) {
-      toast.error("Error de red al guardar la materia.");
+      toast.error(`Error al guardar: ${error.message}`);
     }
-
     setIsLoading(false);
   }
 
-  // 3. Usamos los nuevos componentes de React-Bootstrap
   return (
-    <Card style={{ width: '100%', maxWidth: '400px' }}>
+    <Card className="mt-3 shadow-sm border-0" style={{ width: '100%', maxWidth: '400px' }}>
       <Card.Body>
-        <Card.Title>Gestión de Materias</Card.Title>
+        <Card.Title>Agregar Nueva Materia</Card.Title>
         <Form onSubmit={handleSubmit}>
           <Form.Group className="mb-3" controlId="nombre-materia-form">
             <Form.Label>Nombre de la Materia:</Form.Label>
@@ -78,17 +69,11 @@ function GestionMaterias({ refreshKey }) {
               disabled={isLoading}
             />
           </Form.Group>
-
+          
           <Button variant="primary" type="submit" disabled={isLoading}>
             {isLoading ? (
               <>
-                <Spinner
-                  as="span"
-                  animation="border"
-                  size="sm"
-                  role="status"
-                  aria-hidden="true"
-                />
+                <Spinner as="span" animation="border" size="sm" />
                 <span className="ms-1">Guardando...</span>
               </>
             ) : (
@@ -96,31 +81,26 @@ function GestionMaterias({ refreshKey }) {
             )}
           </Button>
         </Form>
-
-
+        
         <h4 className="mt-4">Materias Existentes:</h4>
         {isListLoading ? (
           <div className="text-center">
             <Spinner animation="border" />
           </div>
         ) : (
-          
           <ListGroup>
             {materias.length === 0 && <ListGroup.Item>No hay materias creadas.</ListGroup.Item>}
             {materias.map(materia => (
-              <ListGroup.Item
+              <ListGroup.Item 
                 key={materia.id}
-                
                 className="mb-2 p-3 border rounded shadow-sm d-flex justify-content-center align-items-center"
               >
-                
                 <span className="fw-bold me-3">{materia.nombre}</span>
                 <Badge bg="info">Materia</Badge>
               </ListGroup.Item>
             ))}
           </ListGroup>
         )}
-
       </Card.Body>
     </Card>
   );

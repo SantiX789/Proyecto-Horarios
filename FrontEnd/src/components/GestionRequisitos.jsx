@@ -1,42 +1,31 @@
 // frontend/src/components/GestionRequisitos.jsx (Refactorizado)
 import { useState, useEffect } from 'react';
-
-// 1. Importamos los componentes
 import { Form, Button, Card, Spinner, ListGroup, Row, Col } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 
-const API_URL = "http://127.0.0.1:8000";
+// 1. Importamos el servicio
+import { apiFetch } from '../apiService';
 
 function GestionRequisitos({ refreshKey, onDatosCambiados }) {
-  // Listas para los dropdowns
   const [cursos, setCursos] = useState([]);
   const [materias, setMaterias] = useState([]);
-  
-  // Datos del formulario
   const [cursoSeleccionado, setCursoSeleccionado] = useState("");
   const [materiaSeleccionada, setMateriaSeleccionada] = useState("");
   const [horas, setHoras] = useState("");
-
-  // Lista de requisitos existentes
   const [requisitosDelCurso, setRequisitosDelCurso] = useState([]);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isReqLoading, setIsReqLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 2. Estados de Carga (UX)
-  const [isDataLoading, setIsDataLoading] = useState(false); // Para los <select>
-  const [isReqLoading, setIsReqLoading] = useState(false);   // Para la lista de requisitos
-  const [isSubmitting, setIsSubmitting] = useState(false); // Para el botón de guardar
-
-  // Cargar Cursos y Materias para los menús <select>
   async function cargarDatosMaestros() {
     setIsDataLoading(true);
     try {
-      const [cursosRes, materiasRes] = await Promise.all([
-        fetch(`${API_URL}/api/cursos`),
-        fetch(`${API_URL}/api/materias`)
+      // 2. Usamos apiFetch con Promise.all
+      const [cursosData, materiasData] = await Promise.all([
+        apiFetch('/api/cursos'),
+        apiFetch('/api/materias')
       ]);
       
-      const cursosData = await cursosRes.json();
-      const materiasData = await materiasRes.json();
-
       setCursos(cursosData);
       setMaterias(materiasData);
 
@@ -44,12 +33,11 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
       if (materiasData.length > 0) setMateriaSeleccionada(materiasData[0].id);
 
     } catch (error) {
-      toast.error("Error cargando cursos o materias.");
+      toast.error(`Error cargando datos: ${error.message}`);
     }
     setIsDataLoading(false);
   }
 
-  // Cargar los requisitos existentes para el curso seleccionado
   async function cargarRequisitosDelCurso(cursoId) {
     if (!cursoId) {
       setRequisitosDelCurso([]);
@@ -57,27 +45,23 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
     }
     setIsReqLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/requisitos/${cursoId}`);
-      const data = await response.json();
+      // 3. Usamos apiFetch
+      const data = await apiFetch(`/api/requisitos/${cursoId}`);
       setRequisitosDelCurso(data);
-    } catch (error)
- {
-      toast.error("Error cargando requisitos del curso.");
+    } catch (error) {
+      toast.error(`Error cargando requisitos: ${error.message}`);
     }
     setIsReqLoading(false);
   }
 
-  // Efecto para cargar Cursos y Materias
   useEffect(() => {
     cargarDatosMaestros();
-  }, [refreshKey]); // Recarga si la data maestra cambia
+  }, [refreshKey]);
 
-  // Efecto para cargar Requisitos
   useEffect(() => {
     cargarRequisitosDelCurso(cursoSeleccionado);
   }, [cursoSeleccionado, refreshKey]);
 
-  // Manejar el envío del formulario
   async function handleSubmit(e) {
     e.preventDefault();
     if (!cursoSeleccionado || !materiaSeleccionada || !horas) {
@@ -86,7 +70,6 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
     }
 
     setIsSubmitting(true);
-    
     try {
       const requisitoData = {
         curso_id: cursoSeleccionado,
@@ -94,32 +77,26 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
         horas_semanales: parseInt(horas, 10)
       };
 
-      const response = await fetch(`${API_URL}/api/requisitos`, {
+      // 4. Usamos apiFetch
+      await apiFetch('/api/requisitos', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requisitoData)
       });
 
-      if (response.ok) {
-        toast.success("¡Requisito guardado!");
-        setHoras(""); // Limpia el input de horas
-        cargarRequisitosDelCurso(cursoSeleccionado); // Refresca la lista
-        if (onDatosCambiados) onDatosCambiados();
-      } else {
-        toast.error("Error al guardar el requisito.");
-      }
+      toast.success("¡Requisito guardado!");
+      setHoras("");
+      cargarRequisitosDelCurso(cursoSeleccionado);
+      if (onDatosCambiados) onDatosCambiados();
     } catch (error) {
-      toast.error("Error de red al guardar el requisito.");
+      toast.error(`Error al guardar: ${error.message}`);
     }
-    
     setIsSubmitting(false);
   }
 
-  // 3. Usamos los nuevos componentes de React-Bootstrap
   return (
-    <Card className="mt-3">
+    <Card className="mt-3 shadow-sm border-0">
       <Card.Body>
-        <Card.Title>Gestión de Requisitos</Card.Title>
+        <Card.Title>Gestión de Requisitos (Cuadro 2)</Card.Title>
         <Form onSubmit={handleSubmit}>
           {isDataLoading ? (
             <div className="text-center"><Spinner animation="border" /></div>

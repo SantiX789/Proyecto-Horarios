@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Form, Button, ListGroup, Card, Spinner } from 'react-bootstrap';
 import { toast } from 'react-toastify';
+import { apiFetch } from '../apiService';
 
 // 2. NO hay imports de TablaHorario, PanelAdmin, etc.
 
@@ -18,16 +19,12 @@ function GestionCursos({ refreshKey }) {
   async function cargarCursos() {
     setIsListLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/cursos`);
-      if (response.ok) {
-        setCursos(await response.json());
-      } else {
-        console.error("Error al cargar cursos");
-        toast.error("Error al cargar lista de cursos.");
-      }
+      // Reemplazamos fetch por apiFetch
+      const data = await apiFetch('/api/cursos');
+      setCursos(data);
     } catch (error) {
       console.error("Error de red:", error);
-      toast.error("Error de red al cargar cursos.");
+      toast.error(`Error al cargar cursos: ${error.message}`);
     }
     setIsListLoading(false);
   }
@@ -44,25 +41,21 @@ function GestionCursos({ refreshKey }) {
     }
 
     setIsLoading(true);
-
+    
     try {
-      const response = await fetch(`${API_URL}/api/cursos`, {
+      // Reemplazamos fetch por apiFetch
+      await apiFetch('/api/cursos', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre: nombreCurso })
+        body: JSON.stringify({ nombre: nombreCurso.toUpperCase() }) // (Tu lógica de mayúsculas)
       });
-
-      if (response.ok) {
-        toast.success("¡Curso agregado con éxito!");
-        setNombreCurso("");
-        cargarCursos();
-      } else {
-        toast.error("Error al guardar el curso.");
-      }
+      
+      toast.success("¡Curso agregado con éxito!");
+      setNombreCurso("");
+      cargarCursos();
     } catch (error) {
-      toast.error("Error de red al guardar el curso.");
+      toast.error(`Error al guardar: ${error.message}`);
     }
-
+    
     setIsLoading(false);
   }
 

@@ -1,10 +1,11 @@
 // frontend/src/components/TablaHorario.jsx (Refactorizado)
 import { useState, useEffect } from 'react';
-// 1. Importamos Table y Spinner
 import { Table, Spinner, Alert } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 
-const API_URL = "http://127.0.0.1:8000";
+// 1. Importamos el servicio
+import { apiFetch } from '../apiService';
+
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 const HORARIOS_RANGOS = [
     "07:00 a 07:40", "07:40 a 08:20", "08:20 a 09:00", "09:00 a 09:40",
@@ -16,7 +17,6 @@ const HORARIOS_RANGOS = [
 
 function TablaHorario( { curso, refreshKey } ) {
   const [horariosDelCurso, setHorariosDelCurso] = useState({});
-  // 2. Estado de carga (UX)
   const [isLoading, setIsLoading] = useState(false);
 
   async function cargarHorarioDelCurso() {
@@ -26,15 +26,11 @@ function TablaHorario( { curso, refreshKey } ) {
     }
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/horarios/${curso}`);
-      if (response.ok) {
-        const data = await response.json();
-        setHorariosDelCurso(data);
-      } else {
-        toast.error("Error al cargar el horario.");
-      }
+      // 2. Usamos apiFetch
+      const data = await apiFetch(`/api/horarios/${curso}`);
+      setHorariosDelCurso(data);
     } catch (error) {
-      toast.error("Error de red al cargar el horario.");
+      toast.error(`Error al cargar el horario: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -42,9 +38,8 @@ function TablaHorario( { curso, refreshKey } ) {
 
   useEffect(() => {
     cargarHorarioDelCurso();
-  }, [curso, refreshKey]); // Depende de 'curso' y 'refreshKey'
+  }, [curso, refreshKey]);
 
-  // 3. Renderizado condicional (UX)
   if (!curso) {
     return <Alert variant="info" className="mt-3">Selecciona un curso para ver su horario.</Alert>;
   }
@@ -65,7 +60,6 @@ function TablaHorario( { curso, refreshKey } ) {
     return <Alert variant="warning" className="mt-3">Este curso no tiene ningún horario generado.</Alert>;
   }
 
-  // 4. Usamos el componente <Table> de React-Bootstrap
   return (
     <Table bordered hover responsive size="sm" className="mt-3">
       <thead className="table-primary text-center">

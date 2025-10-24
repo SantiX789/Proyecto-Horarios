@@ -1,13 +1,14 @@
 // frontend/src/components/PanelAdmin.jsx (Refactorizado)
 import { useState } from 'react';
-// 1. Importamos los componentes
 import { Button, Card, Spinner, ButtonGroup } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 
-const API_URL = "http://127.0.0.1:8000";
+// 1. Importamos el servicio
+import { apiFetch } from '../apiService';
+
+const API_URL = "http://127.0.0.1:8000"; // (Solo lo usamos para el Excel)
 
 function PanelAdmin( { curso, onDatosCambiados } ) {
-  // 2. Estado de carga (UX)
   const [isDeleting, setIsDeleting] = useState(false);
 
   async function handleBorrarHorarios() {
@@ -21,30 +22,28 @@ function PanelAdmin( { curso, onDatosCambiados } ) {
     
     setIsDeleting(true);
     try {
-      const response = await fetch(`${API_URL}/api/horarios/${curso}`, { method: 'DELETE' });
-      const result = await response.json();
+      // 2. Usamos apiFetch
+      const result = await apiFetch(`/api/horarios/${curso}`, { 
+        method: 'DELETE' 
+      });
 
-      if (response.ok) {
-        toast.success(result.mensaje);
-        onDatosCambiados(); // Avisamos a App.jsx
-      } else {
-        toast.error(result.mensaje);
-      }
+      toast.success(result.mensaje);
+      onDatosCambiados();
     } catch (error) {
-      toast.error("Error de red al borrar el horario.");
+      toast.error(`Error al borrar: ${error.message}`);
     }
     setIsDeleting(false);
   }
 
   function handleDescargarExcel() {
-    // Esta acción es una descarga directa, no necesita spinner
     toast.info("Preparando descarga de Excel...");
+    // 3. El Excel no usa apiFetch porque es una descarga de archivo
+    // y no devuelve JSON. Lo dejamos como está.
     window.location.href = `${API_URL}/api/export/excel`;
   }
   
-  // 3. Usamos los nuevos componentes
   return (
-    <Card className="mt-3">
+    <Card className="mt-3 shadow-sm border-0">
       <Card.Body>
         <Card.Title>Acciones Administrativas</Card.Title>
         <ButtonGroup className="w-100">

@@ -6,7 +6,30 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional
 import openpyxl
 from io import BytesIO
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+import app.seguridad as seguridad
 
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
+
+# 2. Función de dependencia para obtener el usuario actual
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    """
+    Dependencia que se ejecuta en cada endpoint protegido.
+    Verifica el token y devuelve los datos del usuario.
+    """
+    username = seguridad.verificar_token(token)
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Podríamos buscar al usuario en la DB, pero por ahora
+    # solo devolver el username es suficiente.
+    return {"username": username}
 app = FastAPI()
 
 # --- Configuración de CORS (Sin cambios) ---
@@ -26,7 +49,10 @@ def leer_db():
         with open(DB_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             # Asegurarse de que todas las claves existan
-            keys = ["profesores", "materias", "cursos", "requisitos_curso", "horarios_generados"]
+            
+            # ¡AÑADIMOS "usuarios" A ESTA LISTA!
+            keys = ["profesores", "materias", "cursos", "requisitos_curso", "horarios_generados", "usuarios"]
+            
             for key in keys:
                 if key not in data:
                     data[key] = []
@@ -38,7 +64,8 @@ def leer_db():
             "materias": [],
             "cursos": [],
             "requisitos_curso": [],
-            "horarios_generados": []
+            "horarios_generados": [],
+            "usuarios": []  # ¡La añadimos aquí también!
         }
 
 def guardar_db(data):
@@ -63,15 +90,28 @@ class Requisito(BaseModel):
     materia_id: str    # ej: "m-5678"
     horas_semanales: int
 
+class Usuario(BaseModel):
+    username: str
+
+class UsuarioEnDB(Usuario):
+    hashed_password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class UsuarioRegistro(BaseModel):
+    username: str
+    password: str
 
 # --- 3. Nuevos Endpoints de "Gestión" (CRUD) ---
 # Estos endpoints manejarán tu "Cuadro 1: Profesores" y "Cuadro 2: Cursos y Materias"
 
-# --- PROFESORES (Cuadro 1) ---
+
 @app.get("/api/profesores")
-def obtener_profesores():
+def obtener_profesores(current_user: dict = Depends(get_current_user)):
     db = leer_db()
-    return db["profesores"]
+    return db.get("profesores", [])
 
 @app.post("/api/profesores")
 def agregar_profesor(profesor: Profesor):
@@ -182,7 +222,60 @@ def obtener_horario_curso(curso_nombre: str):
 
     return horario_vista
 
-# ... (después de tus otros endpoints)
+# --- 5. Endpoints de Autenticación (Login / Registro) ---
+
+@app.post("/api/register", response_model=Usuario)
+def registrar_usuario(usuario: UsuarioRegistro):
+    db = leer_db()
+    
+    # Verificar si el usuario ya existe
+    for u in db["usuarios"]:
+        if u["username"] == usuario.username:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El nombre de usuario ya existe"
+            )
+            
+    # Crear el nuevo usuario
+    hashed_password = seguridad.hashear_password(usuario.password)
+    nuevo_usuario_db = UsuarioEnDB(
+        username=usuario.username, 
+        hashed_password=hashed_password
+    )
+    
+    db["usuarios"].append(nuevo_usuario_db.dict())
+    guardar_db(db)
+    
+    return Usuario(username=usuario.username)
+
+
+# OAuth2PasswordRequestForm es un formulario especial de FastAPI
+# que espera 'username' y 'password'
+@app.post("/api/login", response_model=Token)
+def login_para_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    db = leer_db()
+    
+    # 1. Buscar al usuario
+    usuario_encontrado = None
+    for u in db["usuarios"]:
+        if u["username"] == form_data.username:
+            usuario_encontrado = u
+            break
+            
+    # 2. Verificar al usuario y la contraseña
+    if not usuario_encontrado or not seguridad.verificar_password(form_data.password, u["hashed_password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Nombre de usuario o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    # 3. Crear el token si todo es correcto
+    access_token = seguridad.crear_access_token(
+        data={"sub": usuario_encontrado["username"]}
+    )
+    
+    return {"access_token": access_token, "token_type": "bearer"}
 
 @app.delete("/api/horarios/{curso_nombre}")
 def borrar_horarios_curso(curso_nombre: str):
