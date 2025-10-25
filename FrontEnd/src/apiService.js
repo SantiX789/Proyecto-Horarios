@@ -3,62 +3,67 @@
 const API_URL = "http://127.0.0.1:8000";
 const TOKEN_KEY = "proyecto_horarios_token";
 
-/**
- * Nuestro "wrapper" de fetch. Se encarga de:
- * 1. Añadir el Content-Type: application/json por defecto.
- * 2. Coger el token del localStorage y añadirlo al header 'Authorization'.
- * 3. Centralizar el manejo de errores 401 (Token expirado/inválido).
- * 4. Convertir la respuesta a JSON y lanzar un error si la API falla.
- */
+// 1. Definimos una clase de Error personalizada
+class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status; // Guardamos el status code
+  }
+}
+
 export async function apiFetch(endpoint, options = {}) {
   const token = localStorage.getItem(TOKEN_KEY);
-
-  // 1. Configurar headers
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
-
-  // 2. Añadir el token si existe
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  const config = { ...options, headers };
 
-  const config = {
-    ...options,
-    headers,
-  };
+  let response; // La definimos fuera para poder usarla en el catch
 
   try {
-    // 3. Hacer la llamada
-    const response = await fetch(`${API_URL}${endpoint}`, config);
+    response = await fetch(`${API_URL}${endpoint}`, config);
 
-    // 4. Manejo de errores 401 (Token inválido)
+    // Manejo de errores 401 (Token inválido) - sigue igual
     if (response.status === 401) {
-      localStorage.removeItem(TOKEN_KEY); // Borramos el token malo
-      window.location.reload(); // Recargamos la app, forzando el Login
-      throw new Error("Sesión expirada. Por favor, inicia sesión.");
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.reload();
+      // 2. Lanzamos nuestro error personalizado
+      throw new ApiError("Sesión expirada. Por favor, inicia sesión.", 401);
     }
 
-    // 5. Manejo de respuestas sin contenido (ej. un DELETE)
+    // Manejo de respuestas sin contenido (ej. DELETE 204) - sigue igual
     if (response.status === 204) {
-      return { success: true }; // O simplemente null
+      return { success: true };
     }
 
-    // 6. Convertir respuesta a JSON
-    const data = await response.json();
+    // Intentamos leer el JSON, incluso si hay error (puede tener 'detail')
+    const data = await response.json().catch(() => ({ detail: "Respuesta no es JSON" }));
 
-    // 7. Manejo de otros errores (400, 500, etc.)
+    // Manejo de otros errores (4xx, 5xx)
     if (!response.ok) {
-      throw new Error(data.detail || "Ocurrió un error en la API");
+        // 3. Lanzamos nuestro error personalizado con el status y el detail
+        throw new ApiError(data.detail || `Error HTTP ${response.status}`, response.status);
     }
 
-    // 8. ¡Éxito!
+    // ¡Éxito!
     return data;
 
   } catch (err) {
-    // Errores de red o los 'throw' de arriba
-    console.error("Error en apiFetch:", err);
-    throw err; // Re-lanzamos el error para que el componente lo atrape
+    // 4. Si ya es un ApiError (lanzado arriba), lo re-lanzamos tal cual.
+    if (err instanceof ApiError) {
+      console.error(`API Error ${err.status}:`, err.message);
+      throw err;
+    } 
+    // Si es un error de red (fetch falló completamente)
+    else {
+      console.error("Network Error:", err);
+      // Lanzamos un ApiError genérico para consistencia
+      throw new ApiError("Error de red o el servidor no responde.", 0); // Status 0 para errores de red
+    }
   }
 }

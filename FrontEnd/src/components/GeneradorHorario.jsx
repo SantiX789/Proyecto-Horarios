@@ -1,12 +1,11 @@
-// frontend/src/components/GeneradorHorario.jsx (Refactorizado)
+// frontend/src/components/GeneradorHorario.jsx (Corregido)
 import { useState, useEffect } from 'react';
 import { Form, Button, Card, Spinner, ListGroup, Row, Col } from 'react-bootstrap';
 import { toast } from 'react-toastify';
-
-// 1. Importamos el servicio
 import { apiFetch } from '../apiService';
 
 function GeneradorHorario({ refreshKey, onDatosCambiados }) {
+  // --- Estados ---
   const [cursos, setCursos] = useState([]);
   const [profesores, setProfesores] = useState([]);
   const [cursoSeleccionado, setCursoSeleccionado] = useState("");
@@ -16,10 +15,10 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
   const [isReqLoading, setIsReqLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- Funciones de Carga ---
   async function cargarDatosMaestros() {
     setIsDataLoading(true);
     try {
-      // 2. Usamos apiFetch con Promise.all
       const [cursosData, profData] = await Promise.all([
         apiFetch('/api/cursos'),
         apiFetch('/api/profesores')
@@ -40,7 +39,6 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
     }
     setIsReqLoading(true);
     try {
-      // 3. Usamos apiFetch
       const data = await apiFetch(`/api/requisitos/${cursoId}`);
       setRequisitos(data);
       setAsignaciones({});
@@ -50,6 +48,7 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
     setIsReqLoading(false);
   }
 
+  // --- Efectos ---
   useEffect(() => {
     cargarDatosMaestros();
   }, [refreshKey]);
@@ -58,6 +57,7 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
     cargarRequisitos(cursoSeleccionado);
   }, [cursoSeleccionado]);
 
+  // --- Handlers ---
   function handleAsignacionChange(requisitoId, profesorId) {
     setAsignaciones(prev => ({
       ...prev,
@@ -66,11 +66,12 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
   }
 
   async function handleGenerarHorario() {
+    // 1. VALIDACIÓN y PREPARACIÓN - Ahora DENTRO de la función
     if (!cursoSeleccionado) {
       toast.warn("Selecciona un curso.");
       return;
     }
-    
+
     const asignacionesArray = Object.keys(asignaciones).map(reqId => ({
       requisito_id: reqId,
       profesor_id: asignaciones[reqId]
@@ -80,40 +81,50 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
       toast.warn("Asigna al menos un profesor a una materia.");
       return;
     }
-    
+
     if (asignacionesArray.length < requisitos.length) {
       if (!confirm("No has asignado profesores a todas las materias. ¿Deseas continuar igualmente?")) {
         return;
       }
     }
 
+    const solverRequest = {
+      curso_id: cursoSeleccionado,
+      asignaciones: asignacionesArray
+    };
+
+    // 2. Ejecución de la llamada a la API
     setIsSubmitting(true);
     try {
-      const solverRequest = {
-        curso_id: cursoSeleccionado,
-        asignaciones: asignacionesArray
-      };
-
-      // 4. Usamos apiFetch
       const result = await apiFetch('/api/generar-horario-completo', {
         method: 'POST',
         body: JSON.stringify(solverRequest)
       });
-      
+
       if (result.faltantes_total > 0) {
         toast.warn(result.mensaje);
       } else {
         toast.success(result.mensaje);
       }
-      
       onDatosCambiados();
 
     } catch (error) {
-      toast.error(`Error al generar: ${error.message}`);
+      // Manejo de errores (como lo teníamos antes)
+      if (error.status === 409) {
+        toast.error(`No se pudo generar: ${error.message}`);
+      } else if (error.status === 401) {
+        toast.error("Error de autenticación. Intenta iniciar sesión de nuevo.");
+      } else {
+        toast.error(`Error inesperado (${error.status || 'Red'}): ${error.message}`);
+      }
+      console.error("Detalle completo del error:", error);
+    } finally {
+      // 3. Aseguramos que el spinner se desactive SIEMPRE
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
-  }
+  } // <-- Llave de cierre de handleGenerarHorario
 
+  // --- Renderizado del Componente ---
   return (
     <Card border="primary">
       <Card.Header as="h3">Generador de Horarios (Cuadro 3)</Card.Header>
@@ -124,7 +135,7 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
             {isDataLoading ? (
               <Spinner animation="border" size="sm" />
             ) : (
-              <Form.Select 
+              <Form.Select
                 value={cursoSeleccionado}
                 onChange={(e) => setCursoSeleccionado(e.target.value)}
               >
@@ -136,7 +147,7 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
             )}
           </Form.Group>
         </Form>
-        
+
         <hr />
 
         <Card.Title>Asignar Profesores a Materias:</Card.Title>
@@ -144,13 +155,13 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
           <div className="text-center"><Spinner animation="border" /></div>
         ) : (
           <ListGroup variant="flush">
-            {requisitos.length === 0 && !cursoSeleccionado && 
+            {requisitos.length === 0 && !cursoSeleccionado &&
               <ListGroup.Item>Selecciona un curso para ver sus requisitos.</ListGroup.Item>
             }
-            {requisitos.length === 0 && cursoSeleccionado && 
+            {requisitos.length === 0 && cursoSeleccionado &&
               <ListGroup.Item>Este curso no tiene requisitos. Cárgalos en la Pestaña 1.</ListGroup.Item>
             }
-            
+
             {requisitos.map(req => (
               <ListGroup.Item key={req.id}>
                 <Row>
@@ -161,7 +172,7 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
                     </span>
                   </Col>
                   <Col md={6}>
-                    <Form.Select 
+                    <Form.Select
                       value={asignaciones[req.id] || ""}
                       onChange={(e) => handleAsignacionChange(req.id, e.target.value)}
                       disabled={isDataLoading}
@@ -179,10 +190,10 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
         )}
 
         {requisitos.length > 0 && (
-          <Button 
+          <Button
             variant="primary"
             size="lg"
-            onClick={handleGenerarHorario} 
+            onClick={handleGenerarHorario}
             disabled={isSubmitting || isReqLoading || isDataLoading}
             className="mt-3 w-100"
           >
@@ -195,7 +206,8 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
         )}
       </Card.Body>
     </Card>
-  );
-}
+  ); // <-- Cierre del return
 
-export default GeneradorHorario;
+} // <-- Cierre de la función GeneradorHorario
+
+export default GeneradorHorario; // <-- Exportación

@@ -1,36 +1,241 @@
 {
     "profesores": [
         {
-            "nombre": "cris",
+            "nombre": "Profesro A",
             "disponibilidad": [
                 "Lunes-07:00",
-                "Lunes-07:40",
-                "Martes-08:20",
-                "Martes-09:00",
-                "Mi\u00e9rcoles-07:40",
-                "Mi\u00e9rcoles-08:20",
-                "Jueves-08:20",
-                "Jueves-09:40",
-                "Viernes-09:40",
-                "Viernes-09:00"
+                "Martes-07:00"
             ],
-            "id": "p-58019f4e-8beb-403c-813d-2a2acd5cf30b"
+            "id": "p-ee439e14-ed91-4467-a9ad-89fe555250dd"
+        },
+        {
+            "nombre": "Profesor B",
+            "disponibilidad": [
+                "Lunes-07:00"
+            ],
+            "id": "p-fd1c1533-2f7e-4862-9481-0c24920054d2"
+        },
+        {
+            "nombre": "Profe C",
+            "disponibilidad": [
+                "Lunes-09:00",
+                "Lunes-09:40",
+                "Martes-09:00"
+            ],
+            "id": "p-891d432b-e093-4745-8c77-62a4883563de"
+        },
+        {
+            "nombre": "profe D",
+            "disponibilidad": [
+                "Lunes-09:00",
+                "Martes-09:40"
+            ],
+            "id": "p-f3413c11-0116-4c55-9ec6-3b1788f853da"
+        },
+        {
+            "nombre": "profe X",
+            "disponibilidad": [
+                "Lunes-08:20",
+                "Martes-08:20",
+                "Mi\u00e9rcoles-08:20"
+            ],
+            "id": "p-7d1fa7cc-b016-4872-8515-e80d226c11e0"
+        },
+        {
+            "nombre": "profe Y",
+            "disponibilidad": [
+                "Lunes-08:20"
+            ],
+            "id": "p-e79ef9db-b796-43af-a075-039cca0f72f3"
+        },
+        {
+            "nombre": "preofe E",
+            "disponibilidad": [
+                "Lunes-10:20"
+            ],
+            "id": "p-4a76482f-2c62-46e7-b0b8-23c0920e66bb"
         }
     ],
     "materias": [
         {
-            "nombre": "ED.FISICA",
-            "id": "m-e46bb0b6-a63a-4587-87b3-d38f5fd607eb"
+            "nombre": "MAT",
+            "id": "m-28fd6b85-e63a-4435-8cd1-00ea63c95638"
+        },
+        {
+            "nombre": "LEN",
+            "id": "m-04e0968c-3dbd-4187-92f6-26245b36e3d8"
+        },
+        {
+            "nombre": "FIS",
+            "id": "m-5ec51eba-7f2d-4b8c-8c2b-f104e5a7f5b0"
+        },
+        {
+            "nombre": "QUIS",
+            "id": "m-8baade56-6de2-4e59-88d4-29c20b3b8908"
+        },
+        {
+            "nombre": "MATA",
+            "id": "m-8ef6805a-3591-49fd-99dd-d551a1391b88"
+        },
+        {
+            "nombre": "LENA",
+            "id": "m-ff32691c-07f3-49f9-9826-d641e6a79726"
+        },
+        {
+            "nombre": "HISTB",
+            "id": "m-3cdbf87d-3524-4539-93b0-c58c072db7d7"
+        },
+        {
+            "nombre": "IMP",
+            "id": "m-7431ddfb-dec9-419e-9fec-de9757d787fe"
         }
     ],
     "cursos": [
         {
-            "nombre": "1\u00b0A\u00d1O",
-            "id": "c-9c8d892f-942c-4ef3-922a-0f6900755cd1"
+            "nombre": "TEST 1",
+            "id": "c-51b1312d-68b1-4ca3-a106-2d55785a5797"
+        },
+        {
+            "nombre": "TEST 2",
+            "id": "c-43fa2b73-a87f-4cad-8a22-420228cc4094"
+        },
+        {
+            "nombre": "CURSO A",
+            "id": "c-9fe47e9d-f8a7-4f6f-bd6b-d9c0007ae6a7"
+        },
+        {
+            "nombre": "CURSO B",
+            "id": "c-cd9a251a-851e-4e88-a221-30d67920264b"
+        },
+        {
+            "nombre": "TEST FAIL",
+            "id": "c-e26e9bea-f742-417b-b4b9-06310a3c36f5"
         }
     ],
-    "requisitos_curso": [],
-    "horarios_generados": [],
+    "requisitos_curso": [
+        {
+            "curso_id": "c-51b1312d-68b1-4ca3-a106-2d55785a5797",
+            "materia_id": "m-28fd6b85-e63a-4435-8cd1-00ea63c95638",
+            "horas_semanales": 1,
+            "id": "r-269e93e7-6290-4184-8560-93046eb0c711"
+        },
+        {
+            "curso_id": "c-51b1312d-68b1-4ca3-a106-2d55785a5797",
+            "materia_id": "m-04e0968c-3dbd-4187-92f6-26245b36e3d8",
+            "horas_semanales": 1,
+            "id": "r-45c2fd86-4e04-4d89-9152-a590a46f8da8"
+        },
+        {
+            "curso_id": "c-43fa2b73-a87f-4cad-8a22-420228cc4094",
+            "materia_id": "m-5ec51eba-7f2d-4b8c-8c2b-f104e5a7f5b0",
+            "horas_semanales": 2,
+            "id": "r-df2053ca-f802-486e-8718-efa6af57b07a"
+        },
+        {
+            "curso_id": "c-43fa2b73-a87f-4cad-8a22-420228cc4094",
+            "materia_id": "m-8baade56-6de2-4e59-88d4-29c20b3b8908",
+            "horas_semanales": 1,
+            "id": "r-d0f8965a-a706-4956-a5da-50a836cc77f3"
+        },
+        {
+            "curso_id": "c-9fe47e9d-f8a7-4f6f-bd6b-d9c0007ae6a7",
+            "materia_id": "m-8ef6805a-3591-49fd-99dd-d551a1391b88",
+            "horas_semanales": 2,
+            "id": "r-0c7dfe00-121b-4e25-8608-984f6626d46d"
+        },
+        {
+            "curso_id": "c-9fe47e9d-f8a7-4f6f-bd6b-d9c0007ae6a7",
+            "materia_id": "m-ff32691c-07f3-49f9-9826-d641e6a79726",
+            "horas_semanales": 1,
+            "id": "r-4e8f7f8d-92f1-41aa-925c-9a3265f68ae6"
+        },
+        {
+            "curso_id": "c-cd9a251a-851e-4e88-a221-30d67920264b",
+            "materia_id": "m-3cdbf87d-3524-4539-93b0-c58c072db7d7",
+            "horas_semanales": 1,
+            "id": "r-d1f5c70b-0e7b-4b60-aeca-03674bcafacb"
+        },
+        {
+            "curso_id": "c-e26e9bea-f742-417b-b4b9-06310a3c36f5",
+            "materia_id": "m-7431ddfb-dec9-419e-9fec-de9757d787fe",
+            "horas_semanales": 2,
+            "id": "r-55d65ad2-f10d-4d44-803f-da4d76c7a1d4"
+        }
+    ],
+    "horarios_generados": [
+        {
+            "id": "a-1a24c3fe-0262-4764-9673-2a65eb61ae9b",
+            "curso_id": "c-51b1312d-68b1-4ca3-a106-2d55785a5797",
+            "profesor_id": "p-ee439e14-ed91-4467-a9ad-89fe555250dd",
+            "materia_id": "m-28fd6b85-e63a-4435-8cd1-00ea63c95638",
+            "dia": "Martes",
+            "hora_rango": "07:00 a 07:40"
+        },
+        {
+            "id": "a-1d31326d-3e58-4cd1-833e-b498164a3b08",
+            "curso_id": "c-51b1312d-68b1-4ca3-a106-2d55785a5797",
+            "profesor_id": "p-fd1c1533-2f7e-4862-9481-0c24920054d2",
+            "materia_id": "m-04e0968c-3dbd-4187-92f6-26245b36e3d8",
+            "dia": "Lunes",
+            "hora_rango": "07:00 a 07:40"
+        },
+        {
+            "id": "a-9e734f50-090a-4e5b-8e20-0b058ce83322",
+            "curso_id": "c-43fa2b73-a87f-4cad-8a22-420228cc4094",
+            "profesor_id": "p-891d432b-e093-4745-8c77-62a4883563de",
+            "materia_id": "m-5ec51eba-7f2d-4b8c-8c2b-f104e5a7f5b0",
+            "dia": "Lunes",
+            "hora_rango": "09:00 a 09:40"
+        },
+        {
+            "id": "a-afce239f-5117-4c77-acad-8acf8209e33b",
+            "curso_id": "c-43fa2b73-a87f-4cad-8a22-420228cc4094",
+            "profesor_id": "p-891d432b-e093-4745-8c77-62a4883563de",
+            "materia_id": "m-5ec51eba-7f2d-4b8c-8c2b-f104e5a7f5b0",
+            "dia": "Lunes",
+            "hora_rango": "09:40 a 10:20"
+        },
+        {
+            "id": "a-e6e341f7-d901-4f9d-89c3-d736cb2287fc",
+            "curso_id": "c-43fa2b73-a87f-4cad-8a22-420228cc4094",
+            "profesor_id": "p-f3413c11-0116-4c55-9ec6-3b1788f853da",
+            "materia_id": "m-8baade56-6de2-4e59-88d4-29c20b3b8908",
+            "dia": "Martes",
+            "hora_rango": "09:40 a 10:20"
+        },
+        {
+            "id": "a-56758cc0-2383-4b74-ab52-7bf23ac561b2",
+            "curso_id": "c-cd9a251a-851e-4e88-a221-30d67920264b",
+            "profesor_id": "p-7d1fa7cc-b016-4872-8515-e80d226c11e0",
+            "materia_id": "m-3cdbf87d-3524-4539-93b0-c58c072db7d7",
+            "dia": "Lunes",
+            "hora_rango": "08:20 a 09:00"
+        },
+        {
+            "id": "a-13d14107-d189-4fc3-b034-98bd774af1c3",
+            "curso_id": "c-9fe47e9d-f8a7-4f6f-bd6b-d9c0007ae6a7",
+            "profesor_id": "p-7d1fa7cc-b016-4872-8515-e80d226c11e0",
+            "materia_id": "m-8ef6805a-3591-49fd-99dd-d551a1391b88",
+            "dia": "Martes",
+            "hora_rango": "08:20 a 09:00"
+        },
+        {
+            "id": "a-359c5c71-b4b1-41a9-97d0-b58b278d9d22",
+            "curso_id": "c-9fe47e9d-f8a7-4f6f-bd6b-d9c0007ae6a7",
+            "profesor_id": "p-7d1fa7cc-b016-4872-8515-e80d226c11e0",
+            "materia_id": "m-8ef6805a-3591-49fd-99dd-d551a1391b88",
+            "dia": "Mi\u00e9rcoles",
+            "hora_rango": "08:20 a 09:00"
+        },
+        {
+            "id": "a-d981a196-357a-48aa-ada1-a8c508cde7e2",
+            "curso_id": "c-9fe47e9d-f8a7-4f6f-bd6b-d9c0007ae6a7",
+            "profesor_id": "p-e79ef9db-b796-43af-a075-039cca0f72f3",
+            "materia_id": "m-ff32691c-07f3-49f9-9826-d641e6a79726",
+            "dia": "Lunes",
+            "hora_rango": "08:20 a 09:00"
+        }
+    ],
     "usuarios": [
         {
             "username": "Santiago",

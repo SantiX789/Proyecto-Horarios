@@ -311,116 +311,205 @@ def borrar_horarios_curso(curso_nombre: str):
 # --- 7. Modelos de Datos para el "Solver" ---
 # Esto es lo que el frontend nos enviará
 
+# ... (cerca de tus otros modelos Pydantic)
+# --- Modelos para el Solver ---
 class AsignacionSolver(BaseModel):
-    requisito_id: str  # El ID del requisito (ej. "r-123", que es "Matemática 5hs")
-    profesor_id: str   # El ID del profesor asignado (ej. "p-456")
+    requisito_id: str
+    profesor_id: str
 
 class SolverRequest(BaseModel):
-    curso_id: str      # El ID del curso para el que generamos
-    asignaciones: List[AsignacionSolver] # La lista de asignaciones
+    curso_id: str
+    asignaciones: List[AsignacionSolver] # Lista de {req_id, prof_id}
+
+# --- Función Auxiliar para el Solver Backtracking ---
+
+def _is_slot_available(dia: str, hora_rango: str, profesor_id: str, curso_id: str, current_schedule: List[Dict]) -> bool:
+    """Verifica si un hueco específico está libre para el profesor Y el curso."""
+    for asignacion in current_schedule:
+        if asignacion["dia"] == dia and asignacion["hora_rango"] == hora_rango:
+            # Verificar conflicto del curso (otra materia en el mismo hueco)
+            if asignacion["curso_id"] == curso_id:
+                return False
+            # Verificar conflicto del profesor (mismo profesor en otro curso)
+            if asignacion["profesor_id"] == profesor_id:
+                return False
+    return True
+
+def _solve_recursive(
+    requisitos_a_asignar: List[Dict], # Lista de {req_id, prof_id, horas_necesarias, materia_id}
+    profesores_map: Dict,            # {prof_id: datos_prof_con_set_disponibilidad}
+    curso_id: str,                   # ID del curso que estamos programando
+    current_schedule: List[Dict]     # El horario construido hasta ahora [{dia, hora_rango, prof_id, ...}]
+) -> Optional[List[Dict]]:
+    """
+    Función recursiva de backtracking para encontrar un horario válido.
+    Devuelve el horario completo si se encuentra, si no, None.
+    """
+    # Caso Base 1: ¡Éxito! Todos los requisitos asignados.
+    if not requisitos_a_asignar:
+        return current_schedule
+
+    # Obtener el requisito actual a asignar (el primero)
+    current_req = requisitos_a_asignar[0]
+    remaining_reqs = requisitos_a_asignar[1:] # El resto de los requisitos
+
+    profesor_id = current_req["prof_id"]
+    horas_necesarias = current_req["horas_necesarias"]
+    prof_data = profesores_map.get(profesor_id)
+
+    if not prof_data: # No debería pasar si los datos están limpios
+        return None # No se puede resolver si el profesor no existe
+
+    # Convertir disponibilidad a lista y ordenar para consistencia (opcional pero útil)
+    available_slots = sorted(list(prof_data["disponibilidad"]))
+
+    # --- Paso Recursivo: Intentar asignar 'horas_necesarias' huecos ---
+    
+    # Necesitamos encontrar combinaciones de N huecos disponibles
+    # Esto requiere un enfoque más complejo que la simple iteración.
+    # Podemos usar itertools.combinations o escribir otro helper recursivo.
+    # Por simplicidad aquí, intentemos primero un enfoque iterativo simplificado,
+    # aunque podría no encontrar todas las soluciones para casos complejos.
+    
+    # Intentemos asignar una hora a la vez recursivamente.
+    
+    def _assign_hours_recursive(hours_left_to_assign: int, slots_to_try: List[str], schedule_so_far: List[Dict]) -> Optional[List[Dict]]:
+        # Caso base: Todas las horas para este requisito asignadas
+        if hours_left_to_assign == 0:
+            # Ahora intenta asignar el *siguiente* requisito
+            result = _solve_recursive(remaining_reqs, profesores_map, curso_id, schedule_so_far)
+            if result:
+                return result # ¡Solución encontrada! Pásala hacia arriba.
+            else:
+                return None # Este camino llevó a un callejón sin salida para requisitos posteriores.
+
+        # Si no quedan más huecos para probar, pero quedan horas, este camino falló.
+        if not slots_to_try:
+            return None
+
+        # Prueba el primer hueco disponible
+        slot = slots_to_try[0]
+        remaining_slots = slots_to_try[1:]
+        
+        try:
+            dia, hora_inicio = slot.split('-')
+            # Cálculo básico de tiempo (reemplazar con función robusta si es necesario)
+            minutos = int(hora_inicio[3:])
+            hora = int(hora_inicio[:2])
+            hora_fin_min = (minutos + 40) % 60
+            hora_fin_hr = hora + (minutos + 40) // 60
+            hora_rango = f"{hora_inicio} a {hora_fin_hr:02d}:{hora_fin_min:02d}"
+        except Exception:
+            # Salta huecos inválidos
+             return _assign_hours_recursive(hours_left_to_assign, remaining_slots, schedule_so_far)
 
 
-# --- 7. El Endpoint "Solver" (El Cerebro) ---
-@app.post("/api/generar-horario-completo")
+        # *** Verificar Restricciones ***
+        if _is_slot_available(dia, hora_rango, profesor_id, curso_id, schedule_so_far):
+            # Si está disponible, "haz el movimiento": Añade al horario
+            new_asignacion = {
+                "id": f"a-{uuid.uuid4()}", # Generar ID aquí o quizás después
+                "curso_id": curso_id,
+                "profesor_id": profesor_id,
+                "materia_id": current_req["materia_id"],
+                "dia": dia,
+                "hora_rango": hora_rango
+            }
+            
+            # Recurre: Intenta asignar las horas restantes con este hueco elegido
+            result = _assign_hours_recursive(hours_left_to_assign - 1, remaining_slots, schedule_so_far + [new_asignacion])
+            
+            # Si la llamada recursiva encontró una solución, ¡devuélvela!
+            if result:
+                return result
+
+            # Si no, "deshaz el movimiento" (backtrack) - hecho implícitamente al no retornar 'result'
+            # y continuar a la siguiente posibilidad.
+
+        # *** Prueba la siguiente posibilidad ***
+        # Salta el hueco actual e intenta asignar las horas usando el resto de los huecos
+        result_skipping_slot = _assign_hours_recursive(hours_left_to_assign, remaining_slots, schedule_so_far)
+        if result_skipping_slot:
+            return result_skipping_slot
+
+        # Si ni usar el hueco ni saltarlo funcionó, este camino falla.
+        return None
+
+    # Inicia la recursión interna para el requisito actual
+    return _assign_hours_recursive(horas_necesarias, available_slots, current_schedule)
+
+
+# --- El Endpoint Principal del Solver (Modificado) ---
+@app.post("/api/generar-horario-completo", tags=["Solver"]) # Añadido tags para Swagger UI
 def generar_horario_completo(request: SolverRequest):
     db = leer_db()
     
-    # 1. Limpiar el horario ANTERIOR para este curso
-    # Filtramos la lista, quedándonos solo con los horarios que NO son de este curso
+    # 1. Limpiar horario anterior para este curso
     db["horarios_generados"] = [
         h for h in db.get("horarios_generados", []) 
         if h["curso_id"] != request.curso_id
     ]
     
-    # 2. Cargar todos los datos maestros en diccionarios para fácil acceso
-    profesores_map = {p["id"]: p for p in db.get("profesores", [])}
+    # 2. Preparar datos para el solver
+    profesores_map = {p["id"]: {**p, "disponibilidad": set(p.get("disponibilidad", []))} 
+                      for p in db.get("profesores", [])}
     requisitos_map = {r["id"]: r for r in db.get("requisitos_curso", [])}
+    materias_map = {m["id"]: m for m in db.get("materias", [])} # Necesario para materia_id
 
-    # 3. El Algoritmo de Asignación (Constraint Satisfaction)
-    # Esta es la lógica central.
-    
-    horas_faltantes_total = 0
-    
-    # Iteramos por cada asignación que nos mandó el usuario
-    for asign in request.asignaciones:
-        prof = profesores_map.get(asign.profesor_id)
-        req = requisitos_map.get(asign.requisito_id)
+    # Construir la lista de requisitos a asignar para esta petición específica
+    requisitos_a_asignar = []
+    for asign_request in request.asignaciones:
+        req = requisitos_map.get(asign_request.requisito_id)
+        if req and req["curso_id"] == request.curso_id:
+            requisitos_a_asignar.append({
+                "req_id": req["id"],
+                "prof_id": asign_request.profesor_id,
+                "horas_necesarias": req["horas_semanales"],
+                "materia_id": req["materia_id"] # Pasar materia_id
+            })
+
+    # Obtener horario existente (para verificar conflictos entre todos los cursos)
+    initial_schedule = db["horarios_generados"] # Empezar con asignaciones de otros cursos
+
+    # 3. Llamar a la función recursiva del solver
+    solution = _solve_recursive(
+        requisitos_a_asignar=requisitos_a_asignar,
+        profesores_map=profesores_map,
+        curso_id=request.curso_id,
+        current_schedule=initial_schedule # Pasar horario existente
+    )
+
+    # 4. Procesar el resultado
+    if solution:
+        # Filtrar las asignaciones iniciales (de otros cursos)
+        new_assignments = [a for a in solution if a not in initial_schedule]
         
-        # Si el profesor o el requisito no existen (datos corruptos?), saltamos
-        if not prof or not req:
-            continue
-            
-        horas_a_asignar = req["horas_semanales"]
-        horas_asignadas = 0
+        # Añadir las nuevas asignaciones encontradas a la lista de la base de datos
+        db["horarios_generados"].extend(new_assignments)
+        guardar_db(db)
         
-        # Usamos un `set` para la disponibilidad. Es más rápido
-        # y nos permite "quitar" slots ya usados por este mismo profesor.
-        disponibilidad_prof = set(prof["disponibilidad"]) # ej: {"Lunes-07:00", "Martes-09:00", ...}
-
-        # Iteramos por los slots disponibles del profesor
-        for slot in disponibilidad_prof: # ej: "Lunes-07:00"
-            if horas_asignadas >= horas_a_asignar:
-                break # Ya asignamos todas las horas para esta materia
-                
-            dia, hora_inicio = slot.split('-')
-            
-            # (Aquí debes tener una lógica para convertir hora_inicio a hora_rango)
-            # (Por ahora, usamos una lógica simple. Esto debería ser una función)
-            try:
-                minutos = int(hora_inicio[3:])
-                hora = int(hora_inicio[:2])
-                hora_fin_min = (minutos + 40) % 60
-                hora_fin_hr = hora + (minutos + 40) // 60
-                hora_rango_encontrado = f"{hora_inicio} a {hora_fin_hr:02d}:{hora_fin_min:02d}"
-            except Exception:
-                hora_rango_encontrado = f"{hora_inicio} a ??:??" # Fallback
-            
-            # --- ¡VERIFICACIÓN DE COLISIONES! ---
-            # ¡Esta es la lógica clave que faltaba en tu versión original!
-            celda_ocupada = False
-            for h in db["horarios_generados"]:
-                # 1. ¿Está el CURSO ocupado a esa hora? (otra materia)
-                if h["curso_id"] == request.curso_id and h["dia"] == dia and h["hora_rango"] == hora_rango_encontrado:
-                    celda_ocupada = True
-                    break
-                # 2. ¿Está el PROFESOR ocupado a esa hora? (en otro curso)
-                if h["profesor_id"] == prof["id"] and h["dia"] == dia and h["hora_rango"] == hora_rango_encontrado:
-                    celda_ocupada = True
-                    break
-            
-            # --- FIN DE VERIFICACIÓN ---
-
-            if not celda_ocupada:
-                # ¡LIBRE! Asignamos la hora.
-                nueva_asignacion = {
-                    "id": f"a-{uuid.uuid4()}",
-                    "curso_id": request.curso_id,
-                    "profesor_id": prof["id"],
-                    "materia_id": req["materia_id"],
-                    "dia": dia,
-                    "hora_rango": hora_rango_encontrado
-                }
-                db["horarios_generados"].append(nueva_asignacion)
-                horas_asignadas += 1
+        # Verificar si todas las horas solicitadas fueron asignadas (control)
+        assigned_count = len(new_assignments)
+        total_requested_hours = sum(r["horas_necesarias"] for r in requisitos_a_asignar)
         
-        # Contamos cuántas horas no pudimos asignar
-        horas_faltantes_total += (horas_a_asignar - horas_asignadas)
-
-    # 4. Guardamos la base de datos con el nuevo horario generado
-    guardar_db(db)
-    
-    if horas_faltantes_total > 0:
-        return {
-            "mensaje": f"Horario generado con advertencias. Faltaron {horas_faltantes_total} horas por asignar.",
-            "faltantes_total": horas_faltantes_total
-        }
+        if assigned_count < total_requested_hours:
+             faltantes = total_requested_hours - assigned_count
+             return {
+                "mensaje": f"Solución encontrada, pero incompleta. Faltaron {faltantes} horas por asignar (posiblemente por slots insuficientes o conflictos irresolubles).",
+                "faltantes_total": faltantes
+             }
+        else:
+             return {
+                "mensaje": "¡Horario completo generado con éxito usando backtracking!",
+                "faltantes_total": 0
+             }
     else:
-        return {
-            "mensaje": "¡Horario completo generado con éxito!",
-            "faltantes_total": 0
-        }
-
-# ... (El resto de tu main.py, como /api/export/excel)
+        # No se encontró solución
+        guardar_db(db) # Guardar DB para persistir el horario limpiado
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, # 409 Conflicto es apropiado
+            detail="No se pudo encontrar un horario válido con las restricciones dadas."
+        )
 
 @app.get("/api/export/excel")
 def crear_excel_api():
