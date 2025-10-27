@@ -25,7 +25,7 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
         apiFetch('/api/cursos'),
         apiFetch('/api/materias')
       ]);
-      
+
       setCursos(cursosData);
       setMaterias(materiasData);
 
@@ -96,39 +96,42 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
   return (
     <Card className="mt-3 shadow-sm border-0">
       <Card.Body>
-        <Card.Title>Gestión de Requisitos (Cuadro 2)</Card.Title>
+        <Card.Title>Gestión de Requisitos</Card.Title>
         <Form onSubmit={handleSubmit}>
           {isDataLoading ? (
             <div className="text-center"><Spinner animation="border" /></div>
           ) : (
-            <Row className="mb-3">
-              <Form.Group as={Col} controlId="req-curso">
+            <Row className="mb-3 align-items-baseline">
+              <Form.Group as={Col} md={4} controlId="req-curso">
                 <Form.Label>Curso:</Form.Label>
-                <Form.Select 
+                <Form.Select
                   value={cursoSeleccionado}
                   onChange={(e) => setCursoSeleccionado(e.target.value)}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isDataLoading}
                 >
+                  <option value="">-- Seleccionar --</option>
                   {cursos.map(curso => (
                     <option key={curso.id} value={curso.id}>{curso.nombre}</option>
                   ))}
                 </Form.Select>
               </Form.Group>
 
-              <Form.Group as={Col} controlId="req-materia">
+              <Form.Group as={Col} md={4} controlId="req-materia">
                 <Form.Label>Materia:</Form.Label>
-                <Form.Select 
+                <Form.Select
                   value={materiaSeleccionada}
                   onChange={(e) => setMateriaSeleccionada(e.target.value)}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isDataLoading}
                 >
+                  <option value="">-- Seleccionar --</option>
                   {materias.map(materia => (
                     <option key={materia.id} value={materia.id}>{materia.nombre}</option>
                   ))}
                 </Form.Select>
               </Form.Group>
 
-              <Form.Group as={Col} controlId="req-horas">
+              {/* Asegúrate que el div wrapper fue removido de aquí */}
+              <Form.Group as={Col} md={4} controlId="req-horas" className="horas-semanales-group">
                 <Form.Label>Horas Semanales:</Form.Label>
                 <Form.Control
                   type="number"
@@ -141,7 +144,7 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
               </Form.Group>
             </Row>
           )}
-          
+
           <Button variant="primary" type="submit" disabled={isDataLoading || isSubmitting}>
             {isSubmitting ? (
               <Spinner as="span" animation="border" size="sm" />

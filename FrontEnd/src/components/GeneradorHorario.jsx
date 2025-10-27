@@ -127,7 +127,7 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
   // --- Renderizado del Componente ---
   return (
     <Card border="primary">
-      <Card.Header as="h3">Generador de Horarios (Cuadro 3)</Card.Header>
+      <Card.Header as="h3">Generador de Horarios</Card.Header>
       <Card.Body>
         <Form>
           <Form.Group className="mb-3" controlId="gen-curso">
