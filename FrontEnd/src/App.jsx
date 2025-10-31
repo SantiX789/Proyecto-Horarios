@@ -4,14 +4,12 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from './apiService';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import logoEmpresa from './assets/Logo programa.jpeg'; 
 
-// 1. IMPORTA TU LOGO (asegúrate que la ruta sea correcta)
-import logoEmpresa from './assets/Logo programa.jpeg'; // <-- Verifica esta ruta
-
-// Importamos TODOS los componentes de Bootstrap
+// 1. Importamos TODOS los componentes de Bootstrap
 import { Tabs, Tab, Container, Form, Button } from 'react-bootstrap';
 
-// Importamos TODOS nuestros componentes
+// 2. Importamos TODOS nuestros componentes
 import Login from './components/Login';
 import Registro from './components/Registro';
 import TablaHorario from './components/TablaHorario';
@@ -21,13 +19,14 @@ import GestionMaterias from './components/GestionMaterias';
 import GestionProfesores from './components/GestionProfesores';
 import GestionRequisitos from './components/GestionRequisitos';
 import GeneradorHorario from './components/GeneradorHorario';
+import ReporteCargaHoraria from './components/ReporteCargaHoraria'; // <-- ¡AÑADIDO!
 
 const API_URL = "http://127.0.0.1:8000";
 const TOKEN_KEY = "proyecto_horarios_token";
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem(TOKEN_KEY) || null);
-  const [authMode, setAuthMode] = useState('login');
+  const [authMode, setAuthMode] = useState('login'); 
   const [curso, setCurso] = useState("");
   const [listaCursos, setListaCursos] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -63,6 +62,7 @@ function App() {
 
   // --- RENDERIZADO CONDICIONAL ---
   if (!token) {
+    // ... (código de login/registro sin cambios)
     return (
       <>
         <ToastContainer position="bottom-right" autoClose={3000} />
@@ -88,16 +88,10 @@ function App() {
         autoClose={3000}
         hideProgressBar={false}
       />
-
-      {/* ======================================= */}
-      {/* =====>> 2. INSERTA EL LOGO AQUÍ <<===== */}
-      {/* ======================================= */}
-      <div className="text-start mb-4"> {/* text-start lo alinea a la izquierda */}
-        <img src={logoEmpresa} alt="Logo Empresa" style={{ height: '50px' }} /> {/* Ajusta la altura si es necesario */}
+      
+      <div className="text-start mb-4">
+        <img src={logoEmpresa} alt="Logo Empresa" style={{ height: '50px' }} />
       </div>
-      {/* ======================================= */}
-      {/* =========== FIN DEL LOGO ============ */}
-      {/* ======================================= */}
 
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2>Proyecto Horarios</h2>
@@ -109,19 +103,19 @@ function App() {
 
         {/* --- PESTAÑA 1: CONFIGURACIÓN --- */}
         <Tab eventKey="configuracion" title="1. Datos de los profesores">
-         {/* ... (Contenido de la Pestaña 1) ... */}
-         <div className="p-3 border border-top-0 rounded-bottom">
+          {/* ... (tu código de Pestaña 1 sin cambios) ... */}
+          <div className="p-3 border border-top-0 rounded-bottom">
             <h3>Paneles de Gestión</h3>
             <p>Aquí cargas todos los datos base antes de generar un horario.</p>
             <GestionProfesores onDatosCambiados={handleDatosCambiados} />
             <div className="d-flex justify-content-around flex-wrap gap-3 my-3">
               <GestionCursos
                 refreshKey={refreshKey}
-                onDatosCambiados={handleDatosCambiados}
+                onDatosCambiados={handleDatosCambiados} 
               />
               <GestionMaterias
                 refreshKey={refreshKey}
-                onDatosCambiados={handleDatosCambiados}
+                onDatosCambiados={handleDatosCambiados} 
               />
             </div>
             <GestionRequisitos
@@ -133,8 +127,8 @@ function App() {
 
         {/* --- PESTAÑA 2: GENERADOR --- */}
         <Tab eventKey="generador" title="2. Generador">
-          {/* ... (Contenido de la Pestaña 2) ... */}
-           <div className="p-3 border border-top-0 rounded-bottom">
+          {/* ... (tu código de Pestaña 2 sin cambios) ... */}
+          <div className="p-3 border border-top-0 rounded-bottom">
             <GeneradorHorario
               refreshKey={refreshKey}
               onDatosCambiados={handleDatosCambiados}
@@ -144,7 +138,7 @@ function App() {
 
         {/* --- PESTAÑA 3: VISUALIZAR HORARIOS --- */}
         <Tab eventKey="visualizar" title="3. Visualizar Horarios">
-          {/* ... (Contenido de la Pestaña 3) ... */}
+          {/* ... (tu código de Pestaña 3 sin cambios) ... */}
           <div className="p-3 border border-top-0 rounded-bottom">
             <h3>Visualizador de Horarios</h3>
             <Form.Group controlId="curso-select-visualizador" className="mb-3">
@@ -170,6 +164,24 @@ function App() {
             />
           </div>
         </Tab>
+
+        {/* ======================================= */}
+        {/* =====>> 3. AÑADE LA NUEVA PESTAÑA AQUÍ <<===== */}
+        {/* ======================================= */}
+        <Tab eventKey="reportes" title="4. Reportes">
+          <div className="p-3 border border-top-0 rounded-bottom">
+            <h3>Panel de Reportes</h3>
+            <p>Análisis y estadísticas de los horarios generados.</p>
+            
+            <ReporteCargaHoraria refreshKey={refreshKey} />
+            
+            {/* Aquí podremos añadir más reportes en el futuro */}
+            
+          </div>
+        </Tab>
+        {/* ======================================= */}
+        {/* ========= FIN NUEVA PESTAÑA ========= */}
+        {/* ======================================= */}
 
       </Tabs>
 

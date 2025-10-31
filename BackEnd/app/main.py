@@ -9,6 +9,7 @@ from io import BytesIO
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import app.seguridad as seguridad
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from app.database import (
     SessionLocal, engine, Base, get_db, crear_tablas,
     ProfesorDB, MateriaDB, CursoDB, RequisitoDB, AsignacionDB, UsuarioDB
@@ -33,6 +34,10 @@ class Profesor(BaseModel):
     id: Optional[str] = None
     nombre: str
     disponibilidad: List[str]
+
+class ReporteCargaHoraria(BaseModel):
+    nombre_profesor: str
+    horas_asignadas: int
 
 class Materia(BaseModel):
     id: Optional[str] = None
@@ -428,6 +433,38 @@ def obtener_slots_disponibles_para_asignacion(asignacion_id: str, current_user: 
                 slots_formateados.append({"dia": dia_slot, "hora_inicio": hora_inicio_slot, "hora_rango": hora_rango_slot})
         except ValueError: continue
     return slots_formateados
+
+
+@app.get("/api/reportes/carga-horaria-profesor", response_model=List[ReporteCargaHoraria])
+def reporte_carga_horaria(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Calcula la cantidad total de horas (bloques de 40 min) asignadas
+    a cada profesor en todos los cursos.
+    """
+    
+    # Esta es la consulta SQLAlchemy:
+    # 1. Empieza consultando la tabla ProfesorDB (para el nombre).
+    # 2. Pide contar (func.count) los IDs de la tabla AsignacionDB.
+    # 3. Usa isouter=True para hacer un LEFT JOIN (esto incluye a profesores con 0 horas).
+    # 4. Agrupa los resultados por nombre de profesor.
+    # 5. Ordena de mayor a menor cantidad de horas.
+    resultados_db = db.query(
+            ProfesorDB.nombre,
+            func.count(AsignacionDB.id).label("horas_asignadas")
+        )\
+        .join(AsignacionDB, ProfesorDB.id == AsignacionDB.profesor_id, isouter=True)\
+        .group_by(ProfesorDB.nombre)\
+        .order_by(func.count(AsignacionDB.id).desc())\
+        .all()
+
+    # Convertir la lista de tuplas (ej: [('profe A', 5), ('profe B', 3)])
+    # a una lista de objetos Pydantic.
+    reporte = [
+        ReporteCargaHoraria(nombre_profesor=nombre, horas_asignadas=conteo)
+        for nombre, conteo in resultados_db
+    ]
+
+    return reporte
 
 
 @app.put("/api/asignaciones/{asignacion_id}", status_code=status.HTTP_200_OK)

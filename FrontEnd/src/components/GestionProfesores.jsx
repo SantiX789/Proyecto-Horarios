@@ -1,36 +1,33 @@
-// frontend/src/components/GestionProfesores.jsx (Con Lista y Nueva UI Disponibilidad)
+// frontend/src/components/GestionProfesores.jsx (Revertido a Grilla Clickable)
 import React, { useState, useEffect } from 'react';
-import { Form, Button, Card, Spinner, ListGroup, Modal, InputGroup, ButtonGroup, Row, Col } from 'react-bootstrap';
+import { Form, Button, Card, Spinner, ListGroup, Modal, InputGroup, ButtonGroup } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { apiFetch } from '../apiService';
 
-// Constantes para la nueva UI de disponibilidad
-const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-const HORAS_INICIO = [
-    "07:00", "07:40", "08:20", "09:00", "09:40", "10:20", "11:00", "11:40",
-    "12:20", "13:00", "13:40", "14:20", "15:00", "15:40", "16:20", "17:00",
-    "17:40", "18:20", "19:00", "19:40" // Añadimos 19:40 si es relevante
-];
+// 1. Importamos la GRILA en lugar de definirla aquí
+import GrillaDisponibilidad from './GrillaDisponibilidad';
+
+// (Quitamos las constantes DIAS y HORAS_INICIO, ya que ahora están en GrillaDisponibilidad.jsx)
 
 function GestionProfesores({ refreshKey, onDatosCambiados }) {
-  // Estados para lista y formulario de añadir
+  // ... (Estados para lista y formulario de añadir, sin cambios) ...
   const [profesores, setProfesores] = useState([]);
   const [nombreProfesor, setNombreProfesor] = useState("");
   const [selectedSlots, setSelectedSlots] = useState(new Set()); // Para el formulario de añadir
-  const [isLoading, setIsLoading] = useState(false); // Para el botón 'Guardar'
+  const [isLoading, setIsLoading] = useState(false);
   const [isListLoading, setIsListLoading] = useState(false);
 
-  // Estados para modales
+  // ... (Estados para modales, sin cambios) ...
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [profToDelete, setProfToDelete] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [profToEdit, setProfToEdit] = useState(null);
   const [editNombre, setEditNombre] = useState("");
-  const [editSelectedSlots, setEditSelectedSlots] = useState(new Set()); // Para el modal de editar
+  const [editSelectedSlots, setEditSelectedSlots] = useState(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  // --- Carga de Profesores ---
+  // ... (Función cargarProfesores, sin cambios) ...
   async function cargarProfesores() {
     setIsListLoading(true);
     try {
@@ -44,10 +41,11 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
 
   useEffect(() => {
     cargarProfesores();
-  }, [refreshKey]); // Recarga cuando refreshKey cambia
+  }, [refreshKey]);
 
-  // --- Lógica de Disponibilidad (Nueva UI Checkboxes) ---
-  const handleSlotChange = (slotId, currentSlots, setSlots) => {
+  // --- Lógica de Disponibilidad (manejada por el padre) ---
+  // Esta función ahora se pasará a GrillaDisponibilidad
+  const handleSlotClick = (slotId, currentSlots, setSlots) => {
     setSlots(prev => {
       const newSlots = new Set(prev);
       if (newSlots.has(slotId)) {
@@ -59,7 +57,7 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
     });
   };
 
-  const limpiarCheckboxes = (setSlots) => {
+  const limpiarGrilla = (setSlots) => {
     setSlots(new Set());
   };
 
@@ -83,8 +81,8 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
       });
       toast.success("¡Profesor guardado!");
       setNombreProfesor("");
-      limpiarCheckboxes(setSelectedSlots);
-      if (onDatosCambiados) onDatosCambiados(); // Refrescar listas
+      limpiarGrilla(setSelectedSlots); // Limpia el estado de la grilla de "Añadir"
+      if (onDatosCambiados) onDatosCambiados();
     } catch (error) {
       toast.error(`Error al guardar: ${error.message}`);
     } finally {
@@ -92,10 +90,10 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
     }
   };
 
-  // --- Lógica Borrar ---
+  // --- Lógica Borrar (sin cambios) ---
   const handleShowDeleteModal = (prof) => { setProfToDelete(prof); setShowDeleteModal(true); };
   const handleCloseDeleteModal = () => { setShowDeleteModal(false); setProfToDelete(null); };
-  const handleConfirmDelete = async () => { /* ... (similar a cursos/materias, llama DELETE /api/profesores/{id}) ... */
+  const handleConfirmDelete = async () => {
     if (!profToDelete) return;
     setIsDeleting(true);
     try {
@@ -104,22 +102,21 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
         if (onDatosCambiados) onDatosCambiados();
         handleCloseDeleteModal();
     } catch (error) {
-        toast.error(`Error al borrar: ${error.message}`); // El backend ya maneja el 409
+        toast.error(`Error al borrar: ${error.message}`);
     } finally {
         setIsDeleting(false);
     }
    };
 
-  // --- Lógica Editar ---
+  // --- Lógica Editar (sin cambios) ---
   const handleShowEditModal = (prof) => {
     setProfToEdit(prof);
     setEditNombre(prof.nombre);
-    // Convertir la lista de disponibilidad guardada de nuevo a Set para el modal
     setEditSelectedSlots(new Set(prof.disponibilidad || []));
     setShowEditModal(true);
   };
   const handleCloseEditModal = () => { setShowEditModal(false); setProfToEdit(null); setEditNombre(""); setEditSelectedSlots(new Set()); };
-  const handleSaveChanges = async () => { /* ... (similar a cursos/materias, llama PUT /api/profesores/{id}) ... */
+  const handleSaveChanges = async () => {
     if (!profToEdit || !editNombre) {
          if (!editNombre) toast.warn("El nombre no puede estar vacío.");
         handleCloseEditModal(); return;
@@ -128,9 +125,10 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
      if (disponibilidadEditada.length === 0) {
       toast.warn("Selecciona al menos un bloque horario."); return;
     }
+     const sortedEditada = [...disponibilidadEditada].sort();
+     const sortedOriginal = [...(profToEdit.disponibilidad || [])].sort();
 
-    // Comprobar si hubo cambios reales
-     if (editNombre === profToEdit.nombre && JSON.stringify(disponibilidadEditada.sort()) === JSON.stringify((profToEdit.disponibilidad || []).sort())) {
+     if (editNombre === profToEdit.nombre && JSON.stringify(sortedEditada) === JSON.stringify(sortedOriginal)) {
          toast.info("No se realizaron cambios.");
          handleCloseEditModal();
          return;
@@ -152,29 +150,7 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
     }
    };
 
-  // --- Componente Reutilizable para Checkboxes de Disponibilidad ---
-  const DisponibilidadCheckboxes = ({ selected, onChange }) => (
-    <Row>
-      {DIAS.map(dia => (
-        <Col key={dia} md={2} sm={4} xs={6} className="mb-3">
-          <h6>{dia}</h6>
-          {HORAS_INICIO.map(hora => {
-            const slotId = `${dia}-${hora}`;
-            return (
-              <Form.Check
-                key={slotId}
-                type="checkbox"
-                id={`check-${slotId}`} // ID único para el label
-                label={hora}
-                checked={selected.has(slotId)}
-                onChange={() => onChange(slotId)}
-              />
-            );
-          })}
-        </Col>
-      ))}
-    </Row>
-  );
+  // 2. ELIMINAMOS la función 'DisponibilidadCheckboxes' de aquí
 
   // --- Renderizado ---
   return (
@@ -194,17 +170,20 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
               disabled={isLoading}
             />
           </Form.Group>
-          <Form.Label>Disponibilidad Horaria:</Form.Label>
-          <DisponibilidadCheckboxes
-              selected={selectedSlots}
-              onChange={(slotId) => handleSlotChange(slotId, selectedSlots, setSelectedSlots)}
+          <Form.Label>Disponibilidad Horaria (haz clic en las celdas):</Form.Label>
+          
+          {/* 3. Reemplazamos <DisponibilidadCheckboxes> por <GrillaDisponibilidad> */}
+          <GrillaDisponibilidad 
+              selectedSlots={selectedSlots}
+              onSlotClick={(slotId) => handleSlotClick(slotId, selectedSlots, setSelectedSlots)}
           />
+
           <Button variant="primary" type="submit" disabled={isLoading} className="mt-2">
             {isLoading ? <Spinner size="sm" /> : 'Guardar Nuevo Profesor'}
           </Button>
         </Form>
 
-        {/* --- Lista de Profesores Existentes --- */}
+        {/* --- Lista de Profesores Existentes (sin cambios) --- */}
         <h4 className="mt-4">Profesores Existentes:</h4>
         {isListLoading ? (
           <div className="text-center"><Spinner /></div>
@@ -225,9 +204,8 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
       </Card.Body>
 
       {/* --- Modales (Borrar y Editar) --- */}
-      {/* Modal Borrar */}
+      {/* Modal Borrar (sin cambios) */}
       <Modal show={showDeleteModal} onHide={handleCloseDeleteModal} centered size="sm">
-        {/* ... (Contenido del modal de borrado, similar a cursos/materias) ... */}
          <Modal.Header closeButton><Modal.Title>Confirmar Borrado</Modal.Title></Modal.Header>
          <Modal.Body>¿Seguro que quieres borrar a **"{profToDelete?.nombre}"**?</Modal.Body>
          <Modal.Footer>
@@ -247,11 +225,13 @@ function GestionProfesores({ refreshKey, onDatosCambiados }) {
             <Form.Control type="text" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} disabled={isUpdating} />
           </Form.Group>
           <Form.Label>Disponibilidad Horaria:</Form.Label>
-          {/* Usamos el componente reutilizable de checkboxes */}
-          <DisponibilidadCheckboxes
-              selected={editSelectedSlots}
-              onChange={(slotId) => handleSlotChange(slotId, editSelectedSlots, setEditSelectedSlots)}
+          
+          {/* 4. Reemplazamos <DisponibilidadCheckboxes> por <GrillaDisponibilidad> aquí también */}
+          <GrillaDisponibilidad 
+              selectedSlots={editSelectedSlots}
+              onSlotClick={(slotId) => handleSlotClick(slotId, editSelectedSlots, setEditSelectedSlots)}
           />
+          
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={handleCloseEditModal} disabled={isUpdating}>Cancelar</Button>
