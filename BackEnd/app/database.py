@@ -55,6 +55,18 @@ class CursoDB(Base):
     # Relación (inversa): Qué asignaciones generadas tiene este curso
     asignaciones = relationship("AsignacionDB", back_populates="curso")
 
+# ... (en BackEnd/app/database.py)
+# ... (después de la clase CursoDB)
+
+class AulaDB(Base):
+    __tablename__ = "aulas"
+    id = Column(String, primary_key=True, index=True)
+    nombre = Column(String, unique=True, index=True) # ej: "Aula 101", "Laboratorio"
+    tipo = Column(String, index=True, default="Normal") # ej: "Normal", "Laboratorio", "Gimnasio"
+
+    # Relación (inversa): Qué asignaciones tiene esta aula
+    asignaciones = relationship("AsignacionDB", back_populates="aula")
+
 class RequisitoDB(Base):
     __tablename__ = "requisitos_curso"
     id = Column(String, primary_key=True, index=True)
@@ -64,23 +76,27 @@ class RequisitoDB(Base):
     curso_id = Column(String, ForeignKey("cursos.id"))
     materia_id = Column(String, ForeignKey("materias.id"))
 
+    # --- ¡ESTA LÍNEA FALTABA! ---
+    tipo_aula_requerida = Column(String, default="Normal") 
+
     curso = relationship("CursoDB", back_populates="requisitos")
     materia = relationship("MateriaDB", back_populates="requisitos")
 
 class AsignacionDB(Base):
-    __tablename__ = "horarios_generados"
-    id = Column(String, primary_key=True, index=True)
-    dia = Column(String)
-    hora_rango = Column(String)
+ __tablename__ = "horarios_generados"
+ id = Column(String, primary_key=True, index=True)
+ dia = Column(String)
+ hora_rango = Column(String)
 
-    # Claves foráneas y relaciones (muchos a uno)
-    curso_id = Column(String, ForeignKey("cursos.id"))
-    materia_id = Column(String, ForeignKey("materias.id"))
-    profesor_id = Column(String, ForeignKey("profesores.id"))
+ # Claves foráneas y relaciones (muchos a uno)
+ curso_id = Column(String, ForeignKey("cursos.id"))
+ materia_id = Column(String, ForeignKey("materias.id"))
+ profesor_id = Column(String, ForeignKey("profesores.id"))
 
-    curso = relationship("CursoDB", back_populates="asignaciones")
-    materia = relationship("MateriaDB", back_populates="asignaciones")
-    profesor = relationship("ProfesorDB", back_populates="asignaciones")
+ curso = relationship("CursoDB", back_populates="asignaciones")
+ materia = relationship("MateriaDB", back_populates="asignaciones")
+ profesor = relationship("ProfesorDB", back_populates="asignaciones")
+ aula = relationship("AulaDB", back_populates="asignaciones") # <-- ¡LÍNEA AÑADIDA!
 
 class UsuarioDB(Base):
     __tablename__ = "usuarios"

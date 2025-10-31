@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from app.database import (
     SessionLocal, engine, Base, get_db, crear_tablas,
-    ProfesorDB, MateriaDB, CursoDB, RequisitoDB, AsignacionDB, UsuarioDB
+    ProfesorDB, MateriaDB, CursoDB, AulaDB, RequisitoDB, AsignacionDB, UsuarioDB
 )
 
 # --- Configuración Inicial ---
@@ -39,6 +39,15 @@ class ReporteCargaHoraria(BaseModel):
     nombre_profesor: str
     horas_asignadas: int
 
+class Aula(BaseModel):
+    id: Optional[str] = None
+    nombre: str
+    tipo: Optional[str] = "Normal" # Tipo por defecto 'Normal'
+
+class AulaUpdate(BaseModel):
+    nombre: str
+    tipo: Optional[str] = "Normal"    
+
 class Materia(BaseModel):
     id: Optional[str] = None
     nombre: str
@@ -52,6 +61,7 @@ class Requisito(BaseModel):
     curso_id: str
     materia_id: str
     horas_semanales: int
+    tipo_aula_requerida: Optional[str] = "Normal"
 
 class Usuario(BaseModel):
     username: str
@@ -310,36 +320,118 @@ def modificar_curso(curso_id: str, curso_update: CursoUpdate, current_user: dict
 
 @app.get("/api/requisitos/{curso_id}", response_model=List[dict])
 def obtener_requisitos(curso_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    requisitos_db = db.query(RequisitoDB)\
-                      .options(joinedload(RequisitoDB.materia))\
-                      .filter(RequisitoDB.curso_id == curso_id)\
-                      .all()
+    # ... (la consulta de requisitos_db no cambia) ...
+    requisitos_db = db.query(RequisitoDB).options(joinedload(RequisitoDB.materia)).filter(RequisitoDB.curso_id == curso_id).all()
+
     requisitos_list = []
     for req_db in requisitos_db:
         requisitos_list.append({
-            "id": req_db.id, "curso_id": req_db.curso_id, "materia_id": req_db.materia_id,
+            "id": req_db.id,
+            "curso_id": req_db.curso_id,
+            "materia_id": req_db.materia_id,
             "horas_semanales": req_db.horas_semanales,
-            "materia_nombre": req_db.materia.nombre if req_db.materia else "???"
+            "materia_nombre": req_db.materia.nombre if req_db.materia else "???",
+            "tipo_aula_requerida": req_db.tipo_aula_requerida # <-- ¡AÑADE ESTA LÍNEA!
         })
+
     return requisitos_list
+
+# --- ENDPOINTS DE GESTIÓN DE AULAS ---
+
+@app.get("/api/aulas", response_model=List[Aula])
+def obtener_aulas(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Obtiene una lista de todas las aulas."""
+    aulas_db = db.query(AulaDB).order_by(AulaDB.nombre).all()
+    return [Aula(id=a.id, nombre=a.nombre, tipo=a.tipo) for a in aulas_db]
+
+
+@app.post("/api/aulas", response_model=Aula, status_code=status.HTTP_201_CREATED)
+def agregar_aula(aula: Aula, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Agrega una nueva aula a la base de datos."""
+    # Verificar si ya existe por nombre
+    aula_existente = db.query(AulaDB).filter(AulaDB.nombre == aula.nombre).first()
+    if aula_existente:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un aula con ese nombre")
+
+    aula_id = f"a-{uuid.uuid4()}" # Usamos 'a-' como prefijo para aulas
+    db_aula = AulaDB(
+        id=aula_id,
+        nombre=aula.nombre,
+        tipo=aula.tipo
+    )
+    
+    db.add(db_aula)
+    db.commit()
+    db.refresh(db_aula)
+    
+    return Aula(id=db_aula.id, nombre=db_aula.nombre, tipo=db_aula.tipo)
+
+
+@app.put("/api/aulas/{aula_id}", response_model=Aula)
+def modificar_aula(aula_id: str, aula_update: AulaUpdate, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Modifica el nombre o tipo de un aula existente."""
+    aula_db = db.query(AulaDB).filter(AulaDB.id == aula_id).first()
+    if not aula_db:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aula no encontrada")
+
+    # Verificar si el nuevo nombre ya está en uso por OTRA aula
+    nuevo_nombre = aula_update.nombre
+    aula_existente_mismo_nombre = db.query(AulaDB).filter(AulaDB.nombre == nuevo_nombre, AulaDB.id != aula_id).first()
+    if aula_existente_mismo_nombre:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe otra aula con ese nombre")
+
+    # Actualizar datos
+    aula_db.nombre = aula_update.nombre
+    aula_db.tipo = aula_update.tipo
+    db.commit()
+    db.refresh(aula_db)
+
+    return Aula(id=aula_db.id, nombre=aula_db.nombre, tipo=aula_db.tipo)
+
+
+@app.delete("/api/aulas/{aula_id}", status_code=status.HTTP_204_NO_CONTENT)
+def borrar_aula(aula_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Borra un aula."""
+    aula_db = db.query(AulaDB).filter(AulaDB.id == aula_id).first()
+    if not aula_db:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aula no encontrada")
+
+    # Verificar si el aula está siendo usada en algún horario generado
+    asignaciones_dependientes = db.query(AsignacionDB).filter(AsignacionDB.aula_id == aula_id).count()
+    if asignaciones_dependientes > 0:
+         raise HTTPException(
+             status_code=status.HTTP_409_CONFLICT,
+             detail=f"No se puede borrar el aula porque está siendo usada por {asignaciones_dependientes} clases."
+         )
+
+    db.delete(aula_db)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 @app.post("/api/requisitos", response_model=Requisito, status_code=status.HTTP_201_CREATED)
 def agregar_requisito(requisito: Requisito, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    curso_existe = db.query(CursoDB).filter(CursoDB.id == requisito.curso_id).first()
-    if not curso_existe: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Curso {requisito.curso_id} no encontrado")
-    materia_existe = db.query(MateriaDB).filter(MateriaDB.id == requisito.materia_id).first()
-    if not materia_existe: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Materia {requisito.materia_id} no encontrada")
+    # ... (la validación de curso_existe y materia_existe no cambia) ...
+
     requisito_id = f"r-{uuid.uuid4()}"
     db_requisito = RequisitoDB(
-        id=requisito_id, curso_id=requisito.curso_id, materia_id=requisito.materia_id,
-        horas_semanales=requisito.horas_semanales
+        id=requisito_id,
+        curso_id=requisito.curso_id,
+        materia_id=requisito.materia_id,
+        horas_semanales=requisito.horas_semanales,
+        tipo_aula_requerida=requisito.tipo_aula_requerida # <-- ¡AÑADE ESTA LÍNEA!
     )
+
     db.add(db_requisito)
     db.commit()
     db.refresh(db_requisito)
-    return Requisito(
-        id=db_requisito.id, curso_id=db_requisito.curso_id, materia_id=db_requisito.materia_id,
-        horas_semanales=db_requisito.horas_semanales
+
+    return Requisito( # <-- Asegúrate de devolver el objeto Pydantic completo
+        id=db_requisito.id,
+        curso_id=db_requisito.curso_id,
+        materia_id=db_requisito.materia_id,
+        horas_semanales=db_requisito.horas_semanales,
+        tipo_aula_requerida=db_requisito.tipo_aula_requerida # <-- ¡AÑADE ESTA LÍNEA!
     )
 
 # --- Endpoint de Vista de Horario ---

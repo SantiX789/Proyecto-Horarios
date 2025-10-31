@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from './apiService';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import logoEmpresa from './assets/Logo programa.jpeg'; 
+import logoEmpresa from './assets/Logo programa.jpeg';
 
 // 1. Importamos TODOS los componentes de Bootstrap
 import { Tabs, Tab, Container, Form, Button } from 'react-bootstrap';
@@ -20,13 +20,14 @@ import GestionProfesores from './components/GestionProfesores';
 import GestionRequisitos from './components/GestionRequisitos';
 import GeneradorHorario from './components/GeneradorHorario';
 import ReporteCargaHoraria from './components/ReporteCargaHoraria'; // <-- ¡AÑADIDO!
+import GestionAulas from './components/GestionAulas';
 
 const API_URL = "http://127.0.0.1:8000";
 const TOKEN_KEY = "proyecto_horarios_token";
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem(TOKEN_KEY) || null);
-  const [authMode, setAuthMode] = useState('login'); 
+  const [authMode, setAuthMode] = useState('login');
   const [curso, setCurso] = useState("");
   const [listaCursos, setListaCursos] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -88,7 +89,7 @@ function App() {
         autoClose={3000}
         hideProgressBar={false}
       />
-      
+
       <div className="text-start mb-4">
         <img src={logoEmpresa} alt="Logo Empresa" style={{ height: '50px' }} />
       </div>
@@ -111,17 +112,23 @@ function App() {
             <div className="d-flex justify-content-around flex-wrap gap-3 my-3">
               <GestionCursos
                 refreshKey={refreshKey}
-                onDatosCambiados={handleDatosCambiados} 
+                onDatosCambiados={handleDatosCambiados}
               />
               <GestionMaterias
                 refreshKey={refreshKey}
-                onDatosCambiados={handleDatosCambiados} 
+                onDatosCambiados={handleDatosCambiados}
               />
             </div>
-            <GestionRequisitos
-              refreshKey={refreshKey}
-              onDatosCambiados={handleDatosCambiados}
-            />
+           <GestionRequisitos
+              refreshKey={refreshKey}
+              onDatosCambiados={handleDatosCambiados}
+            /> {/* <-- ¡AÑADE "/>" AQUÍ! */}
+            
+            <GestionAulas
+              refreshKey={refreshKey}
+              onDatosCambiados={handleDatosCambiados}
+            />
+            
           </div>
         </Tab>
 
@@ -172,11 +179,11 @@ function App() {
           <div className="p-3 border border-top-0 rounded-bottom">
             <h3>Panel de Reportes</h3>
             <p>Análisis y estadísticas de los horarios generados.</p>
-            
+
             <ReporteCargaHoraria refreshKey={refreshKey} />
-            
+
             {/* Aquí podremos añadir más reportes en el futuro */}
-            
+
           </div>
         </Tab>
         {/* ======================================= */}
