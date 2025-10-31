@@ -8,11 +8,11 @@ import { apiFetch } from '../apiService'; // Importamos nuestro servicio
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 // Necesitamos una lista de TODOS los rangos posibles para los selects
 const HORARIOS_RANGOS = [
-    "07:00 a 07:40", "07:40 a 08:20", "08:20 a 09:00", "09:00 a 09:40",
-    "09:40 a 10:20", "10:20 a 11:00", "11:00 a 11:40", "11:40 a 12:20",
-    "12:20 a 13:00", "13:00 a 13:40", "13:40 a 14:20", "14:20 a 15:00",
-    "15:00 a 15:40", "15:40 a 16:20", "16:20 a 17:00", "17:00 a 17:40",
-    "17:40 a 18:20", "18:20 a 19:00", "19:00 a 19:40"
+  "07:00 a 07:40", "07:40 a 08:20", "08:20 a 09:00", "09:00 a 09:40",
+  "09:40 a 10:20", "10:20 a 11:00", "11:00 a 11:40", "11:40 a 12:20",
+  "12:20 a 13:00", "13:00 a 13:40", "13:40 a 14:20", "14:20 a 15:00",
+  "15:00 a 15:40", "15:40 a 16:20", "16:20 a 17:00", "17:00 a 17:40",
+  "17:40 a 18:20", "18:20 a 19:00", "19:00 a 19:40"
 ];
 
 
@@ -62,11 +62,11 @@ function ModalEdicion({ show, handleClose, data, onSaveSuccess }) { // Añadimos
   const horasDisponiblesParaDia = availableSlots
     .filter(slot => slot.dia === selectedDia)
     .map(slot => slot.hora_rango);
-    
+
   // Añadir la hora actual a la lista si no está (para permitir quedarse en el mismo sitio)
   if (data && selectedDia === data.dia && !horasDisponiblesParaDia.includes(data.horaRango)) {
-      horasDisponiblesParaDia.push(data.horaRango);
-      horasDisponiblesParaDia.sort(); // Mantener orden
+    horasDisponiblesParaDia.push(data.horaRango);
+    horasDisponiblesParaDia.sort(); // Mantener orden
   }
 
 
@@ -78,9 +78,9 @@ function ModalEdicion({ show, handleClose, data, onSaveSuccess }) { // Añadimos
     }
     // Verificar si realmente hubo un cambio
     if (selectedDia === data.dia && selectedHoraRango === data.horaRango) {
-        toast.info("No se realizaron cambios.");
-        handleClose();
-        return;
+      toast.info("No se realizaron cambios.");
+      handleClose();
+      return;
     }
 
     setIsSaving(true);
@@ -90,13 +90,13 @@ function ModalEdicion({ show, handleClose, data, onSaveSuccess }) { // Añadimos
         dia: selectedDia,
         hora_rango: selectedHoraRango
       };
-      
+
       // Llamamos al endpoint PUT
       const result = await apiFetch(`/api/asignaciones/${data.asignacion.id}`, {
         method: 'PUT',
         body: JSON.stringify(updateData)
       });
-      
+
       toast.success(result.mensaje);
       onSaveSuccess(); // ¡Avisamos a TablaHorario para que refresque!
       handleClose();   // Cerramos el modal
@@ -119,11 +119,13 @@ function ModalEdicion({ show, handleClose, data, onSaveSuccess }) { // Añadimos
         <Modal.Title>Editar Asignación</Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {/* Mostramos la información actual */}
         <p><strong>Curso:</strong> {data.curso}</p>
         <p><strong>Asignación Actual:</strong> {data.asignacion?.text || 'N/A'}</p>
-        <p><em>Moviendo desde: {data.dia} - {data.horaRango}</em></p>
 
+        {/* --- ¡AÑADE ESTA LÍNEA! --- */}
+        <p><strong>Aula Actual:</strong> {data.asignacion?.aula_nombre || 'N/A'}</p>
+
+        <p><em>Moviendo desde: {data.dia} - {data.horaRango}</em></p>
         <hr />
 
         {/* --- Controles de Edición --- */}
@@ -131,34 +133,34 @@ function ModalEdicion({ show, handleClose, data, onSaveSuccess }) { // Añadimos
         {isLoadingSlots ? (
           <div className="text-center"><Spinner animation="border" /></div>
         ) : error ? (
-            <Alert variant="danger">{error}</Alert>
+          <Alert variant="danger">{error}</Alert>
         ) : (
           <Form>
             <Row>
               <Col>
                 <Form.Group controlId="edit-dia">
                   <Form.Label>Nuevo Día:</Form.Label>
-                  <Form.Select 
-                    value={selectedDia} 
+                  <Form.Select
+                    value={selectedDia}
                     onChange={e => {
-                        setSelectedDia(e.target.value);
-                        // Resetear hora al cambiar día si la actual no está disponible
-                        const nuevasHoras = availableSlots
-                            .filter(slot => slot.dia === e.target.value)
-                            .map(slot => slot.hora_rango);
-                        if (!nuevasHoras.includes(selectedHoraRango)) {
-                             setSelectedHoraRango(nuevasHoras.length > 0 ? nuevasHoras[0] : "");
-                        }
+                      setSelectedDia(e.target.value);
+                      // Resetear hora al cambiar día si la actual no está disponible
+                      const nuevasHoras = availableSlots
+                        .filter(slot => slot.dia === e.target.value)
+                        .map(slot => slot.hora_rango);
+                      if (!nuevasHoras.includes(selectedHoraRango)) {
+                        setSelectedHoraRango(nuevasHoras.length > 0 ? nuevasHoras[0] : "");
+                      }
                     }}
                     disabled={isSaving}
                   >
                     {/* Opciones de días disponibles (basado en availableSlots) */}
                     {[...new Set(availableSlots.map(s => s.dia))].sort().map(diaOption => (
-                       <option key={diaOption} value={diaOption}>{diaOption}</option>
+                      <option key={diaOption} value={diaOption}>{diaOption}</option>
                     ))}
                     {/* Asegurarse que el día actual esté si no está en disponibles */}
                     {![...new Set(availableSlots.map(s => s.dia))].includes(data.dia) &&
-                        <option key={data.dia} value={data.dia}>{data.dia}</option>
+                      <option key={data.dia} value={data.dia}>{data.dia}</option>
                     }
                   </Form.Select>
                 </Form.Group>
@@ -166,8 +168,8 @@ function ModalEdicion({ show, handleClose, data, onSaveSuccess }) { // Añadimos
               <Col>
                 <Form.Group controlId="edit-hora">
                   <Form.Label>Nueva Hora:</Form.Label>
-                  <Form.Select 
-                    value={selectedHoraRango} 
+                  <Form.Select
+                    value={selectedHoraRango}
                     onChange={e => setSelectedHoraRango(e.target.value)}
                     disabled={!selectedDia || isSaving} // Deshabilitado si no hay día
                   >
@@ -182,7 +184,7 @@ function ModalEdicion({ show, handleClose, data, onSaveSuccess }) { // Añadimos
             </Row>
           </Form>
         )}
-        
+
         {/* Mostramos el error de guardado si ocurre */}
         {error && !isLoadingSlots && <Alert variant="danger" className="mt-3">{error}</Alert>}
 
@@ -191,9 +193,9 @@ function ModalEdicion({ show, handleClose, data, onSaveSuccess }) { // Añadimos
         <Button variant="secondary" onClick={handleClose} disabled={isSaving}>
           Cancelar
         </Button>
-        <Button 
-          variant="primary" 
-          onClick={handleSaveChanges} 
+        <Button
+          variant="primary"
+          onClick={handleSaveChanges}
           disabled={isLoadingSlots || isSaving || !selectedDia || !selectedHoraRango}
         >
           {isSaving ? <Spinner as="span" animation="border" size="sm" /> : 'Guardar Cambios'}

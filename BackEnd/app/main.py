@@ -57,11 +57,11 @@ class Curso(BaseModel):
     nombre: str
 
 class Requisito(BaseModel):
-    id: Optional[str] = None # Añadido por consistencia
+    id: Optional[str] = None
     curso_id: str
     materia_id: str
     horas_semanales: int
-    tipo_aula_requerida: Optional[str] = "Normal"
+    tipo_aula_requerida: Optional[str] = "Normal" # <-- ¡AÑADE ESTA LÍNEA!
 
 class Usuario(BaseModel):
     username: str
@@ -119,47 +119,75 @@ def calcular_hora_rango(hora_inicio: str) -> Optional[str]:
         return f"{hora_inicio} a {hora_fin_hr:02d}:{hora_fin_min:02d}"
     except Exception:
         return None
+    
 
-# Funciones auxiliares del Solver (Definidas ANTES de usarlas en el endpoint)
-def _is_slot_available(
-    dia: str, hora_rango: str, profesor_id: str, curso_id: str, db: Session, current_schedule_ids: Set[str]
+
+def _is_prof_and_curso_available(
+    dia: str, hora_rango: str, profesor_id: str, curso_id: str, horario_ocupado: Dict[tuple[str, str], List[Dict]]
 ) -> bool:
-    conflicto_db = db.query(AsignacionDB)\
-                     .filter(
-                         AsignacionDB.dia == dia,
-                         AsignacionDB.hora_rango == hora_rango,
-                         ((AsignacionDB.curso_id == curso_id) | (AsignacionDB.profesor_id == profesor_id)),
-                         ~AsignacionDB.id.in_(current_schedule_ids)
-                     ).first()
-    return not bool(conflicto_db) # Devuelve True si NO hay conflicto
+    """Verifica si el profesor y el curso están libres en un slot específico."""
+    ocupaciones_en_slot = horario_ocupado.get((dia, hora_rango), [])
+    for ocupacion in ocupaciones_en_slot:
+        if ocupacion["curso_id"] == curso_id: return False # Curso ya tiene clase
+        if ocupacion["profesor_id"] == profesor_id: return False # Profesor ya tiene clase
+    return True
 
+# ¡NUEVA FUNCIÓN!
+def _find_available_aula(
+    dia: str, hora_rango: str, tipo_aula_req: str, aulas_disponibles: List[Dict], horario_ocupado: Dict[tuple[str, str], List[Dict]]
+) -> Optional[str]:
+    """Encuentra el ID de la primera aula libre que coincida con el tipo requerido."""
+    
+    aulas_ocupadas_en_slot = {
+        ocupacion["aula_id"] for ocupacion in horario_ocupado.get((dia, hora_rango), []) 
+        if ocupacion.get("aula_id")
+    }
+
+    for aula in aulas_disponibles:
+        if aula["tipo"] == tipo_aula_req and aula["id"] not in aulas_ocupadas_en_slot:
+            return aula["id"] # ¡Encontramos un aula libre del tipo correcto!
+            
+    return None # No se encontraron aulas disponibles
+
+# Función _solve_recursive MODIFICADA para Aulas
 def _solve_recursive(
-    requisitos_a_asignar: List[Dict], profesores_map: Dict, curso_id: str, db: Session, current_schedule: List[AsignacionDB]
+    requisitos_a_asignar: List[Dict],
+    profesores_map: Dict,
+    aulas_por_tipo: Dict[str, List[Dict]], # Nuevo: Mapa de aulas disponibles
+    curso_id: str,
+    db: Session,
+    horario_ocupado: Dict[tuple[str, str], List[Dict]], # Nuevo: Mapa de todo lo ocupado
+    current_schedule: List[AsignacionDB]
 ) -> Optional[List[AsignacionDB]]:
-    if not requisitos_a_asignar: return current_schedule
+
+    if not requisitos_a_asignar: return current_schedule # Éxito
 
     current_req = requisitos_a_asignar[0]
     remaining_reqs = requisitos_a_asignar[1:]
     profesor_id = current_req["prof_id"]
     horas_necesarias = current_req["horas_necesarias"]
+    tipo_aula_req = current_req["tipo_aula_requerida"] # Nuevo
     prof_data = profesores_map.get(profesor_id)
     if not prof_data: return None
 
-    available_slots = sorted(list(prof_data.get("disponibilidad_set", set()))) # Usar .get con default
+    available_slots = sorted(list(prof_data.get("disponibilidad_set", set())))
+    aulas_disponibles_para_tipo = aulas_por_tipo.get(tipo_aula_req, []) # Aulas que coinciden
 
-    current_schedule_ids = {asign.id for asign in current_schedule if asign.id}
-
+    # --- Función interna recursiva para asignar horas ---
     def _assign_hours_recursive(
-        hours_left_to_assign: int, slots_to_try: List[str], schedule_so_far: List[AsignacionDB]
+        hours_left_to_assign: int,
+        slots_to_try: List[str],
+        schedule_so_far: List[AsignacionDB]
     ) -> Optional[List[AsignacionDB]]:
+        
         if hours_left_to_assign == 0:
-            result = _solve_recursive(remaining_reqs, profesores_map, curso_id, db, schedule_so_far)
+            result = _solve_recursive(remaining_reqs, profesores_map, aulas_por_tipo, curso_id, db, horario_ocupado, schedule_so_far)
             return result if result else None
         if not slots_to_try: return None
 
         slot_id = slots_to_try[0]
         remaining_slots = slots_to_try[1:]
-
+        
         try:
             dia, hora_inicio = slot_id.split('-')
             hora_rango = calcular_hora_rango(hora_inicio)
@@ -167,15 +195,38 @@ def _solve_recursive(
         except ValueError:
             return _assign_hours_recursive(hours_left_to_assign, remaining_slots, schedule_so_far)
 
-        current_step_ids = {asign.id for asign in schedule_so_far if asign.id}
-        if _is_slot_available(dia, hora_rango, profesor_id, curso_id, db, current_step_ids):
-            new_asignacion_obj = AsignacionDB(
-                id=f"a-{uuid.uuid4()}", curso_id=curso_id, profesor_id=profesor_id,
-                materia_id=current_req["materia_id"], dia=dia, hora_rango=hora_rango
-            )
-            result = _assign_hours_recursive(hours_left_to_assign - 1, remaining_slots, schedule_so_far + [new_asignacion_obj])
-            if result: return result
+        # *** Verificar Restricciones (Profesor, Curso Y AULA) ***
+        if _is_prof_and_curso_available(dia, hora_rango, profesor_id, curso_id, horario_ocupado):
+            # Si el profe y el curso están libres, AHORA buscamos un aula
+            aula_id_encontrada = _find_available_aula(dia, hora_rango, tipo_aula_req, aulas_disponibles_para_tipo, horario_ocupado)
 
+            if aula_id_encontrada:
+                # ¡TENEMOS HUECO, PROFESOR Y AULA!
+                new_asignacion_obj = AsignacionDB(
+                    id=f"a-{uuid.uuid4()}", curso_id=curso_id, profesor_id=profesor_id,
+                    materia_id=current_req["materia_id"],
+                    dia=dia, hora_rango=hora_rango,
+                    aula_id=aula_id_encontrada # ¡Guardamos el aula!
+                )
+
+                # Actualizamos el horario_ocupado "en memoria" para la siguiente recursión
+                horario_ocupado.setdefault((dia, hora_rango), []).append({
+                    "curso_id": curso_id, 
+                    "profesor_id": profesor_id,
+                    "aula_id": aula_id_encontrada
+                })
+
+                result = _assign_hours_recursive(
+                    hours_left_to_assign - 1,
+                    remaining_slots,
+                    schedule_so_far + [new_asignacion_obj]
+                )
+                if result: return result
+
+                # Backtrack: Si no funcionó, quitamos la asignación del horario_ocupado
+                horario_ocupado[(dia, hora_rango)].pop()
+
+        # Probar la siguiente posibilidad (saltar este slot)
         result_skipping_slot = _assign_hours_recursive(hours_left_to_assign, remaining_slots, schedule_so_far)
         if result_skipping_slot: return result_skipping_slot
 
@@ -183,6 +234,203 @@ def _solve_recursive(
 
     return _assign_hours_recursive(horas_necesarias, available_slots, current_schedule)
 
+
+def _is_prof_and_curso_available(
+    dia: str, hora_rango: str, profesor_id: str, curso_id: str, horario_ocupado: Dict[tuple[str, str], List[Dict]]
+) -> bool:
+    """Verifica si el profesor y el curso están libres en un slot específico."""
+    ocupaciones_en_slot = horario_ocupado.get((dia, hora_rango), [])
+    for ocupacion in ocupaciones_en_slot:
+        if ocupacion["curso_id"] == curso_id: return False # Curso ya tiene clase
+        if ocupacion["profesor_id"] == profesor_id: return False # Profesor ya tiene clase
+    return True
+
+def _find_available_aula(
+    dia: str, hora_rango: str, tipo_aula_req: str, aulas_disponibles: List[Dict], horario_ocupado: Dict[tuple[str, str], List[Dict]]
+) -> Optional[str]:
+    """Encuentra el ID de la primera aula libre que coincida con el tipo requerido."""
+    
+    aulas_ocupadas_en_slot = {
+        ocupacion["aula_id"] for ocupacion in horario_ocupado.get((dia, hora_rango), []) 
+        if ocupacion.get("aula_id")
+    }
+
+    for aula in aulas_disponibles:
+        if aula["tipo"] == tipo_aula_req and aula["id"] not in aulas_ocupadas_en_slot:
+            return aula["id"] # ¡Encontramos un aula libre del tipo correcto!
+            
+    return None # No se encontraron aulas disponibles
+
+def _solve_recursive(
+    requisitos_a_asignar: List[Dict],
+    profesores_map: Dict,
+    aulas_por_tipo: Dict[str, List[Dict]],
+    curso_id: str,
+    db: Session,
+    horario_ocupado: Dict[tuple[str, str], List[Dict]],
+    current_schedule: List[AsignacionDB]
+) -> Optional[List[AsignacionDB]]:
+    """Función recursiva de backtracking (definida ANTES de ser llamada)."""
+
+    if not requisitos_a_asignar: return current_schedule # Éxito
+
+    current_req = requisitos_a_asignar[0]
+    remaining_reqs = requisitos_a_asignar[1:]
+    profesor_id = current_req["prof_id"]
+    horas_necesarias = current_req["horas_necesarias"]
+    tipo_aula_req = current_req["tipo_aula_requerida"]
+    prof_data = profesores_map.get(profesor_id)
+    if not prof_data: return None
+
+    available_slots = sorted(list(prof_data.get("disponibilidad_set", set())))
+    aulas_disponibles_para_tipo = aulas_por_tipo.get(tipo_aula_req, [])
+
+    # --- Función interna recursiva para asignar horas ---
+    def _assign_hours_recursive(
+        hours_left_to_assign: int,
+        slots_to_try: List[str],
+        schedule_so_far: List[AsignacionDB]
+    ) -> Optional[List[AsignacionDB]]:
+        
+        if hours_left_to_assign == 0:
+            result = _solve_recursive(remaining_reqs, profesores_map, aulas_por_tipo, curso_id, db, horario_ocupado, schedule_so_far)
+            return result if result else None
+        if not slots_to_try: return None
+
+        slot_id = slots_to_try[0]
+        remaining_slots = slots_to_try[1:]
+        
+        try:
+            dia, hora_inicio = slot_id.split('-')
+            hora_rango = calcular_hora_rango(hora_inicio)
+            if not hora_rango: raise ValueError("Formato inválido")
+        except ValueError:
+            return _assign_hours_recursive(hours_left_to_assign, remaining_slots, schedule_so_far)
+
+        # *** Verificar Restricciones (Profesor, Curso Y AULA) ***
+        if _is_prof_and_curso_available(dia, hora_rango, profesor_id, curso_id, horario_ocupado):
+            aula_id_encontrada = _find_available_aula(dia, hora_rango, tipo_aula_req, aulas_disponibles_para_tipo, horario_ocupado)
+
+            if aula_id_encontrada:
+                new_asignacion_obj = AsignacionDB(
+                    id=f"a-{uuid.uuid4()}", curso_id=curso_id, profesor_id=profesor_id,
+                    materia_id=current_req["materia_id"],
+                    dia=dia, hora_rango=hora_rango,
+                    aula_id=aula_id_encontrada
+                )
+
+                # Actualizamos el horario_ocupado "en memoria" para la recursión
+                horario_ocupado.setdefault((dia, hora_rango), []).append({
+                    "curso_id": curso_id, "profesor_id": profesor_id, "aula_id": aula_id_encontrada
+                })
+
+                result = _assign_hours_recursive(hours_left_to_assign - 1, remaining_slots, schedule_so_far + [new_asignacion_obj])
+                if result: return result
+
+                # Backtrack: Si no funcionó, quitamos la asignación
+                horario_ocupado[(dia, hora_rango)].pop()
+
+        # Probar la siguiente posibilidad (saltar este slot)
+        result_skipping_slot = _assign_hours_recursive(hours_left_to_assign, remaining_slots, schedule_so_far)
+        if result_skipping_slot: return result_skipping_slot
+
+        return None
+
+    return _assign_hours_recursive(horas_necesarias, available_slots, current_schedule)
+
+
+# --- 2. SEGUNDO: Definimos el Endpoint Principal (que llama a las funciones de arriba) ---
+@app.post("/api/generar-horario-completo", tags=["Solver"])
+def generar_horario_completo(request: SolverRequest, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+
+    # 1. Limpiar horario anterior
+    asignaciones_a_borrar = db.query(AsignacionDB).filter(AsignacionDB.curso_id == request.curso_id).all()
+    for asign in asignaciones_a_borrar:
+        db.delete(asign)
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al limpiar horario anterior: {e}")
+
+    # 2. Preparar datos (¡ahora incluye aulas!)
+    profesores_map = {}
+    profesores_db = db.query(ProfesorDB).all()
+    for p in profesores_db:
+        try: disponibilidad_set = set(json.loads(p.disponibilidad_json or '[]'))
+        except json.JSONDecodeError: disponibilidad_set = set()
+        profesores_map[p.id] = {"id": p.id, "nombre": p.nombre, "disponibilidad_set": disponibilidad_set}
+
+    aulas_db = db.query(AulaDB).all()
+    aulas_por_tipo: Dict[str, List[Dict]] = {}
+    for a in aulas_db:
+        aula_data = {"id": a.id, "nombre": a.nombre, "tipo": a.tipo}
+        aulas_por_tipo.setdefault(a.tipo, []).append(aula_data)
+
+    req_ids_solicitados = [asign.requisito_id for asign in request.asignaciones]
+    requisitos_db = db.query(RequisitoDB).filter(RequisitoDB.curso_id == request.curso_id, RequisitoDB.id.in_(req_ids_solicitados)).all()
+    requisitos_map = {r.id: r for r in requisitos_db}
+
+    requisitos_a_asignar = []
+    profesores_solicitados = set()
+    for asign_request in request.asignaciones:
+        req = requisitos_map.get(asign_request.requisito_id)
+        if req and req.curso_id == request.curso_id:
+            requisitos_a_asignar.append({
+                "req_id": req.id,
+                "prof_id": asign_request.profesor_id,
+                "horas_necesarias": req.horas_semanales,
+                "materia_id": req.materia_id,
+                "tipo_aula_requerida": req.tipo_aula_requerida
+            })
+            profesores_solicitados.add(asign_request.profesor_id)
+    
+    # ... (Verificación de profesores aquí si la tenías) ...
+    for prof_id in profesores_solicitados:
+        if prof_id not in profesores_map:
+             raise HTTPException(status_code=404, detail=f"Profesor con ID {prof_id} no encontrado.")
+
+    # Construir el mapa de horario_ocupado INICIAL (con todos los OTROS cursos)
+    horario_ocupado_inicial: Dict[tuple[str, str], List[Dict]] = {}
+    asignaciones_externas = db.query(AsignacionDB).filter(AsignacionDB.curso_id != request.curso_id).all()
+    for a in asignaciones_externas:
+        horario_ocupado_inicial.setdefault((a.dia, a.hora_rango), []).append({
+            "curso_id": a.curso_id,
+            "profesor_id": a.profesor_id,
+            "aula_id": a.aula_id
+        })
+    
+    # 3. Llamar al solver recursivo (¡ahora sí está definido!)
+    solution_objects = _solve_recursive(
+        requisitos_a_asignar=requisitos_a_asignar,
+        profesores_map=profesores_map,
+        aulas_por_tipo=aulas_por_tipo,
+        curso_id=request.curso_id,
+        db=db,
+        horario_ocupado=horario_ocupado_inicial.copy(), # Pasamos una copia
+        current_schedule=[]
+    )
+
+    # 4. Procesar el resultado (sin cambios)
+    if solution_objects:
+        new_assignments_db = solution_objects
+        try:
+            db.add_all(new_assignments_db)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Error al guardar horario: {e}")
+        
+        assigned_count = len(new_assignments_db)
+        total_requested_hours = sum(r["horas_necesarias"] for r in requisitos_a_asignar)
+        faltantes = total_requested_hours - assigned_count
+        
+        if faltantes > 0:
+            return {"mensaje": f"Solución encontrada (DB), incompleta. Faltaron {faltantes} horas.", "faltantes_total": faltantes}
+        else:
+            return {"mensaje": "¡Horario completo generado (DB)!","faltantes_total": 0}
+    else:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No se pudo encontrar un horario válido (DB).")
 
 # --- Endpoints de la API (AHORA SÍ PUEDEN USAR LAS DEFINICIONES ANTERIORES) ---
 
@@ -437,22 +685,41 @@ def agregar_requisito(requisito: Requisito, current_user: dict = Depends(get_cur
 # --- Endpoint de Vista de Horario ---
 @app.get("/api/horarios/{curso_nombre}", response_model=Dict[str, Dict[str, dict]])
 def obtener_horario_curso(curso_nombre: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    # ... (código sin cambios) ...
+    # 1. Buscar el curso (sin cambios)
     curso_db = db.query(CursoDB).filter(CursoDB.nombre == curso_nombre).first()
     if not curso_db: return {}
     curso_id = curso_db.id
+
+    # 2. Buscar asignaciones y CARGAR TAMBIÉN EL AULA
     asignaciones_db = db.query(AsignacionDB)\
-                        .options(joinedload(AsignacionDB.profesor), joinedload(AsignacionDB.materia))\
-                        .filter(AsignacionDB.curso_id == curso_id).all()
+                        .options(
+                            joinedload(AsignacionDB.profesor),
+                            joinedload(AsignacionDB.materia),
+                            joinedload(AsignacionDB.aula) # <-- ¡AÑADE ESTA LÍNEA!
+                        )\
+                        .filter(AsignacionDB.curso_id == curso_id)\
+                        .all()
+
     horario_vista = {}
     for asignacion in asignaciones_db:
         hora_rango = asignacion.hora_rango
         dia = asignacion.dia
+
         prof_nombre = asignacion.profesor.nombre if asignacion.profesor else "??"
         mat_nombre = asignacion.materia.nombre if asignacion.materia else "??"
+        # 3. OBTENER NOMBRE DEL AULA
+        aula_nombre = asignacion.aula.nombre if asignacion.aula else "Sin Aula" # <-- ¡AÑADE ESTA LÍNEA!
+        
         texto_celda = f"{prof_nombre} ({mat_nombre})"
-        asignacion_data = {"text": texto_celda, "id": asignacion.id}
+
+        asignacion_data = {
+            "text": texto_celda,
+            "id": asignacion.id,
+            "aula_nombre": aula_nombre # <-- ¡AÑADE ESTA LÍNEA!
+        }
+
         horario_vista.setdefault(hora_rango, {})[dia] = asignacion_data
+
     return horario_vista
 
 
