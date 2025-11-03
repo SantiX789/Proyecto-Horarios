@@ -21,6 +21,7 @@ import GestionRequisitos from './components/GestionRequisitos';
 import GeneradorHorario from './components/GeneradorHorario';
 import ReporteCargaHoraria from './components/ReporteCargaHoraria'; // <-- ¡AÑADIDO!
 import GestionAulas from './components/GestionAulas';
+import GestionPreferencias from './components/GestionPreferencias';
 
 const API_URL = "http://127.0.0.1:8000";
 const TOKEN_KEY = "proyecto_horarios_token";
@@ -119,16 +120,21 @@ function App() {
                 onDatosCambiados={handleDatosCambiados}
               />
             </div>
-           <GestionRequisitos
-              refreshKey={refreshKey}
-              onDatosCambiados={handleDatosCambiados}
-            /> {/* <-- ¡AÑADE "/>" AQUÍ! */}
-            
-            <GestionAulas
-              refreshKey={refreshKey}
-              onDatosCambiados={handleDatosCambiados}
-            />
-            
+            <GestionRequisitos
+              refreshKey={refreshKey}
+              onDatosCambiados={handleDatosCambiados}
+            /> {/* <-- ¡AÑADE "/>" AQUÍ! */}
+
+            <GestionAulas
+              refreshKey={refreshKey}
+              onDatosCambiados={handleDatosCambiados}
+            />
+
+            <GestionPreferencias
+              refreshKey={refreshKey}
+            // No necesita onDatosCambiados porque no afecta a otros componentes (todavía)
+            />
+
           </div>
         </Tab>
 

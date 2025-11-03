@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from app.database import (
     SessionLocal, engine, Base, get_db, crear_tablas,
-    ProfesorDB, MateriaDB, CursoDB, AulaDB, RequisitoDB, AsignacionDB, UsuarioDB
+    ProfesorDB, MateriaDB, CursoDB, AulaDB, RequisitoDB, AsignacionDB, UsuarioDB,
+    ConfiguracionDB
 )
 
 # --- Configuración Inicial ---
@@ -98,6 +99,9 @@ class MateriaUpdate(BaseModel):
 class ProfesorUpdate(BaseModel):
     nombre: str
     disponibilidad: List[str]
+
+class Preferencias(BaseModel):
+     almuerzo_slots: List[str] = []
 
 # --- Funciones Auxiliares (DEFINIDAS AQUÍ) ---
 def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -236,7 +240,8 @@ def _solve_recursive(
 
 
 def _is_prof_and_curso_available(
-    dia: str, hora_rango: str, profesor_id: str, curso_id: str, horario_ocupado: Dict[tuple[str, str], List[Dict]]
+    dia: str, hora_rango: str, profesor_id: str, curso_id: str, 
+    horario_ocupado: Dict[tuple[str, str], List[Dict]]
 ) -> bool:
     """Verifica si el profesor y el curso están libres en un slot específico."""
     ocupaciones_en_slot = horario_ocupado.get((dia, hora_rango), [])
@@ -246,21 +251,21 @@ def _is_prof_and_curso_available(
     return True
 
 def _find_available_aula(
-    dia: str, hora_rango: str, tipo_aula_req: str, aulas_disponibles: List[Dict], horario_ocupado: Dict[tuple[str, str], List[Dict]]
+    dia: str, hora_rango: str, tipo_aula_req: str, 
+    aulas_disponibles: List[Dict], 
+    horario_ocupado: Dict[tuple[str, str], List[Dict]]
 ) -> Optional[str]:
     """Encuentra el ID de la primera aula libre que coincida con el tipo requerido."""
-    
     aulas_ocupadas_en_slot = {
         ocupacion["aula_id"] for ocupacion in horario_ocupado.get((dia, hora_rango), []) 
         if ocupacion.get("aula_id")
     }
-
     for aula in aulas_disponibles:
         if aula["tipo"] == tipo_aula_req and aula["id"] not in aulas_ocupadas_en_slot:
-            return aula["id"] # ¡Encontramos un aula libre del tipo correcto!
-            
-    return None # No se encontraron aulas disponibles
+            return aula["id"]
+    return None
 
+# --- 2. Función _solve_recursive MODIFICADA para Almuerzo ---
 def _solve_recursive(
     requisitos_a_asignar: List[Dict],
     profesores_map: Dict,
@@ -268,9 +273,9 @@ def _solve_recursive(
     curso_id: str,
     db: Session,
     horario_ocupado: Dict[tuple[str, str], List[Dict]],
-    current_schedule: List[AsignacionDB]
+    current_schedule: List[AsignacionDB],
+    almuerzo_slots_set: Set[str] # ¡NUEVO! Set de slots de almuerzo ("Dia-HoraInicio")
 ) -> Optional[List[AsignacionDB]]:
-    """Función recursiva de backtracking (definida ANTES de ser llamada)."""
 
     if not requisitos_a_asignar: return current_schedule # Éxito
 
@@ -282,36 +287,76 @@ def _solve_recursive(
     prof_data = profesores_map.get(profesor_id)
     if not prof_data: return None
 
-    available_slots = sorted(list(prof_data.get("disponibilidad_set", set())))
+    # Obtenemos la disponibilidad general del profesor
+    available_slots_set = prof_data.get("disponibilidad_set", set())
+
+    # ¡NUEVA LÓGICA DE PARTICIÓN!
+    # Dividimos los slots en preferidos (no-almuerzo) y no preferidos (almuerzo)
+    slots_preferidos = []
+    slots_no_preferidos = []
+    for slot_id in available_slots_set:
+        if slot_id in almuerzo_slots_set:
+            slots_no_preferidos.append(slot_id)
+        else:
+            slots_preferidos.append(slot_id)
+    
+    # Ordenamos para consistencia
+    slots_preferidos.sort()
+    slots_no_preferidos.sort()
+
     aulas_disponibles_para_tipo = aulas_por_tipo.get(tipo_aula_req, [])
 
     # --- Función interna recursiva para asignar horas ---
     def _assign_hours_recursive(
         hours_left_to_assign: int,
-        slots_to_try: List[str],
+        # AHORA recibe dos listas de slots
+        slots_preferidos_try: List[str], 
+        slots_no_preferidos_try: List[str],
         schedule_so_far: List[AsignacionDB]
     ) -> Optional[List[AsignacionDB]]:
         
         if hours_left_to_assign == 0:
-            result = _solve_recursive(remaining_reqs, profesores_map, aulas_por_tipo, curso_id, db, horario_ocupado, schedule_so_far)
+            # Terminamos con este requisito, pasamos al siguiente
+            result = _solve_recursive(
+                remaining_reqs, profesores_map, aulas_por_tipo, curso_id, db, 
+                horario_ocupado, schedule_so_far, almuerzo_slots_set
+            )
             return result if result else None
-        if not slots_to_try: return None
+        
+        # Si no quedan MÁS slots de NINGÚN tipo, este camino falló
+        if not slots_preferidos_try and not slots_no_preferidos_try: 
+            return None
 
-        slot_id = slots_to_try[0]
-        remaining_slots = slots_to_try[1:]
+        # --- Lógica de Prioridad ---
+        # 1. Determinar qué slot probar ahora (priorizando preferidos)
+        if slots_preferidos_try:
+            slot_id = slots_preferidos_try[0]
+            remaining_preferidos = slots_preferidos_try[1:]
+            remaining_no_preferidos = slots_no_preferidos_try
+        else:
+            # Solo si no quedan preferidos, usamos los no preferidos
+            slot_id = slots_no_preferidos_try[0]
+            remaining_preferidos = []
+            remaining_no_preferidos = slots_no_preferidos_try[1:]
+        
+        # ---------------------------
         
         try:
             dia, hora_inicio = slot_id.split('-')
             hora_rango = calcular_hora_rango(hora_inicio)
             if not hora_rango: raise ValueError("Formato inválido")
         except ValueError:
-            return _assign_hours_recursive(hours_left_to_assign, remaining_slots, schedule_so_far)
+            # Salta este slot si está mal formateado y prueba con los siguientes
+            return _assign_hours_recursive(
+                hours_left_to_assign, remaining_preferidos, remaining_no_preferidos, schedule_so_far
+            )
 
         # *** Verificar Restricciones (Profesor, Curso Y AULA) ***
         if _is_prof_and_curso_available(dia, hora_rango, profesor_id, curso_id, horario_ocupado):
             aula_id_encontrada = _find_available_aula(dia, hora_rango, tipo_aula_req, aulas_disponibles_para_tipo, horario_ocupado)
 
             if aula_id_encontrada:
+                # ¡TENEMOS HUECO, PROFESOR Y AULA!
                 new_asignacion_obj = AsignacionDB(
                     id=f"a-{uuid.uuid4()}", curso_id=curso_id, profesor_id=profesor_id,
                     materia_id=current_req["materia_id"],
@@ -319,31 +364,62 @@ def _solve_recursive(
                     aula_id=aula_id_encontrada
                 )
 
-                # Actualizamos el horario_ocupado "en memoria" para la recursión
                 horario_ocupado.setdefault((dia, hora_rango), []).append({
                     "curso_id": curso_id, "profesor_id": profesor_id, "aula_id": aula_id_encontrada
                 })
 
-                result = _assign_hours_recursive(hours_left_to_assign - 1, remaining_slots, schedule_so_far + [new_asignacion_obj])
+                result = _assign_hours_recursive(
+                    hours_left_to_assign - 1,
+                    remaining_preferidos, # Pasamos los slots restantes
+                    remaining_no_preferidos,
+                    schedule_so_far + [new_asignacion_obj]
+                )
                 if result: return result
 
-                # Backtrack: Si no funcionó, quitamos la asignación
+                # Backtrack:
                 horario_ocupado[(dia, hora_rango)].pop()
 
         # Probar la siguiente posibilidad (saltar este slot)
-        result_skipping_slot = _assign_hours_recursive(hours_left_to_assign, remaining_slots, schedule_so_far)
+        result_skipping_slot = _assign_hours_recursive(
+            hours_left_to_assign, remaining_preferidos, remaining_no_preferidos, schedule_so_far
+        )
         if result_skipping_slot: return result_skipping_slot
 
         return None
 
-    return _assign_hours_recursive(horas_necesarias, available_slots, current_schedule)
+    # Iniciar la recursión interna
+    # ¡IMPORTANTE! El Solver ahora prueba DOS VECES:
+    
+    # 1. Primer Intento: SOLO con huecos preferidos
+    solution_preferida = _assign_hours_recursive(
+        horas_necesarias, 
+        slots_preferidos, # Pasa la lista de preferidos
+        [],               # Pasa una lista VACÍA para los no preferidos
+        current_schedule
+    )
+    
+    if solution_preferida:
+        return solution_preferida # ¡Éxito! Encontramos solución sin usar el almuerzo
+
+    # 2. Segundo Intento (si el primero falló): Con TODOS los huecos
+    # (El backtracking "retrocede" hasta el inicio)
+    # print(f"Advertencia: No se encontró solución solo con huecos preferidos para {profesor_id}. Reintentando con TODOS los huecos (incluyendo almuerzo).")
+    solution_completa = _assign_hours_recursive(
+        horas_necesarias, 
+        slots_preferidos,      # Pasa la lista de preferidos
+        slots_no_preferidos,   # Pasa la lista de almuerzo
+        current_schedule
+    )
+    
+    return solution_completa # Devuelve la solución completa (o None si falló de nuevo)
 
 
-# --- 2. SEGUNDO: Definimos el Endpoint Principal (que llama a las funciones de arriba) ---
+# --- 3. Endpoint principal del Solver (MODIFICADO para cargar Almuerzo) ---
 @app.post("/api/generar-horario-completo", tags=["Solver"])
 def generar_horario_completo(request: SolverRequest, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
 
-    # 1. Limpiar horario anterior
+    # 1. Limpiar horario anterior (sin cambios)
+    # ... (código de borrado) ...
     asignaciones_a_borrar = db.query(AsignacionDB).filter(AsignacionDB.curso_id == request.curso_id).all()
     for asign in asignaciones_a_borrar:
         db.delete(asign)
@@ -353,7 +429,19 @@ def generar_horario_completo(request: SolverRequest, current_user: dict = Depend
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error al limpiar horario anterior: {e}")
 
-    # 2. Preparar datos (¡ahora incluye aulas!)
+    # 2. Preparar datos (¡ahora incluye preferencias!)
+    
+    # Cargar Preferencias (Almuerzo)
+    almuerzo_slots_set = set()
+    try:
+        config_db = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
+        if config_db:
+            almuerzo_data = json.loads(config_db.value_json)
+            almuerzo_slots_set = set(almuerzo_data.get("almuerzo_slots", []))
+    except Exception:
+        pass # Si falla, el set queda vacío (no hay preferencias)
+
+    # Cargar Profesores (sin cambios)
     profesores_map = {}
     profesores_db = db.query(ProfesorDB).all()
     for p in profesores_db:
@@ -361,54 +449,52 @@ def generar_horario_completo(request: SolverRequest, current_user: dict = Depend
         except json.JSONDecodeError: disponibilidad_set = set()
         profesores_map[p.id] = {"id": p.id, "nombre": p.nombre, "disponibilidad_set": disponibilidad_set}
 
+    # Cargar Aulas (sin cambios)
     aulas_db = db.query(AulaDB).all()
     aulas_por_tipo: Dict[str, List[Dict]] = {}
     for a in aulas_db:
         aula_data = {"id": a.id, "nombre": a.nombre, "tipo": a.tipo}
         aulas_por_tipo.setdefault(a.tipo, []).append(aula_data)
 
+    # Cargar Requisitos (sin cambios)
     req_ids_solicitados = [asign.requisito_id for asign in request.asignaciones]
     requisitos_db = db.query(RequisitoDB).filter(RequisitoDB.curso_id == request.curso_id, RequisitoDB.id.in_(req_ids_solicitados)).all()
     requisitos_map = {r.id: r for r in requisitos_db}
-
+    
+    # ... (Construir requisitos_a_asignar, sin cambios) ...
     requisitos_a_asignar = []
     profesores_solicitados = set()
     for asign_request in request.asignaciones:
         req = requisitos_map.get(asign_request.requisito_id)
         if req and req.curso_id == request.curso_id:
             requisitos_a_asignar.append({
-                "req_id": req.id,
-                "prof_id": asign_request.profesor_id,
-                "horas_necesarias": req.horas_semanales,
-                "materia_id": req.materia_id,
+                "req_id": req.id, "prof_id": asign_request.profesor_id,
+                "horas_necesarias": req.horas_semanales, "materia_id": req.materia_id,
                 "tipo_aula_requerida": req.tipo_aula_requerida
             })
             profesores_solicitados.add(asign_request.profesor_id)
-    
-    # ... (Verificación de profesores aquí si la tenías) ...
     for prof_id in profesores_solicitados:
         if prof_id not in profesores_map:
              raise HTTPException(status_code=404, detail=f"Profesor con ID {prof_id} no encontrado.")
 
-    # Construir el mapa de horario_ocupado INICIAL (con todos los OTROS cursos)
+    # Construir horario_ocupado INICIAL (sin cambios)
     horario_ocupado_inicial: Dict[tuple[str, str], List[Dict]] = {}
     asignaciones_externas = db.query(AsignacionDB).filter(AsignacionDB.curso_id != request.curso_id).all()
     for a in asignaciones_externas:
         horario_ocupado_inicial.setdefault((a.dia, a.hora_rango), []).append({
-            "curso_id": a.curso_id,
-            "profesor_id": a.profesor_id,
-            "aula_id": a.aula_id
+            "curso_id": a.curso_id, "profesor_id": a.profesor_id, "aula_id": a.aula_id
         })
     
-    # 3. Llamar al solver recursivo (¡ahora sí está definido!)
+    # 3. Llamar al solver recursivo (¡con el nuevo parámetro!)
     solution_objects = _solve_recursive(
         requisitos_a_asignar=requisitos_a_asignar,
         profesores_map=profesores_map,
         aulas_por_tipo=aulas_por_tipo,
         curso_id=request.curso_id,
         db=db,
-        horario_ocupado=horario_ocupado_inicial.copy(), # Pasamos una copia
-        current_schedule=[]
+        horario_ocupado=horario_ocupado_inicial.copy(),
+        current_schedule=[],
+        almuerzo_slots_set=almuerzo_slots_set # ¡Aquí pasamos las preferencias!
     )
 
     # 4. Procesar el resultado (sin cambios)
@@ -431,7 +517,6 @@ def generar_horario_completo(request: SolverRequest, current_user: dict = Depend
             return {"mensaje": "¡Horario completo generado (DB)!","faltantes_total": 0}
     else:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No se pudo encontrar un horario válido (DB).")
-
 # --- Endpoints de la API (AHORA SÍ PUEDEN USAR LAS DEFINICIONES ANTERIORES) ---
 
 # --- Endpoints de Gestión (CRUD) ---
@@ -655,6 +740,45 @@ def borrar_aula(aula_id: str, current_user: dict = Depends(get_current_user), db
     db.delete(aula_db)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@app.get("/api/preferencias", response_model=Preferencias)
+def obtener_preferencias(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Obtiene las preferencias de horarios (ej. slots de almuerzo)."""
+    config_db = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
+
+    if not config_db:
+        # Si no hay preferencias guardadas, devuelve valores por defecto
+        return Preferencias(almuerzo_slots=[])
+
+    try:
+        # Carga el JSON guardado
+        data = json.loads(config_db.value_json)
+        return Preferencias(**data) # Convierte el dict a modelo Pydantic
+    except json.JSONDecodeError:
+        return Preferencias(almuerzo_slots=[]) # Devuelve por defecto si el JSON está corrupto
+
+@app.put("/api/preferencias", response_model=Preferencias)
+def guardar_preferencias(preferencias: Preferencias, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Guarda o actualiza las preferencias de horarios."""
+
+    # Busca la configuración existente
+    config_db = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
+
+    # Si no existe, la crea
+    if not config_db:
+        config_db = ConfiguracionDB(key="preferencias_horarios")
+        db.add(config_db)
+
+    # Actualiza el valor JSON
+    config_db.value_json = preferencias.model_dump_json() # Pydantic v2 usa model_dump_json()
+
+    try:
+        db.commit()
+        db.refresh(config_db)
+        return preferencias
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al guardar preferencias: {e}")
 
 
 @app.post("/api/requisitos", response_model=Requisito, status_code=status.HTTP_201_CREATED)

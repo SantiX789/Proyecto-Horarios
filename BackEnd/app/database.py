@@ -107,6 +107,13 @@ class UsuarioDB(Base):
     username = Column(String, primary_key=True, index=True) # Usamos username como ID
     hashed_password = Column(String)
 
+class ConfiguracionDB(Base):
+    __tablename__ = "configuracion"
+    # Usaremos una 'clave' como ID primario, ej: "preferencias_horarios"
+    key = Column(String, primary_key=True, index=True)
+    # Guardaremos la configuración (ej: la lista de slots de almuerzo) como un string JSON
+    value_json = Column(Text, default='{}')
+
 
 # --- Función para Crear las Tablas ---
 def crear_tablas():
