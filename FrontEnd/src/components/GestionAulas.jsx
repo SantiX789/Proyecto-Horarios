@@ -122,9 +122,13 @@ function GestionAulas({ refreshKey, onDatosCambiados }) {
     <Card className="mt-3 shadow-sm border-0" style={{ width: '100%', maxWidth: '400px' }}>
       <Card.Body>
         <Card.Title>Gestión de Aulas</Card.Title>
-        {/* Formulario de Añadir */}
+       
         <Form onSubmit={handleAddSubmit}>
-          <Row>
+
+          
+          <Row className="align-items-baseline">
+
+            
             <Col md={7}>
               <Form.Group className="mb-3" controlId="nombre-aula-form">
                 <Form.Label>Nombre del Aula</Form.Label>
@@ -137,6 +141,8 @@ function GestionAulas({ refreshKey, onDatosCambiados }) {
                 />
               </Form.Group>
             </Col>
+
+            
             <Col md={5}>
               <Form.Group className="mb-3" controlId="tipo-aula-form">
                 <Form.Label>Tipo</Form.Label>
@@ -151,7 +157,10 @@ function GestionAulas({ refreshKey, onDatosCambiados }) {
                 </Form.Select>
               </Form.Group>
             </Col>
-          </Row>
+
+          </Row> 
+
+          
           <Button variant="primary" type="submit" disabled={isLoading} className="w-100">
             {isLoading ? <Spinner size="sm" /> : 'Guardar Aula'}
           </Button>
@@ -190,7 +199,7 @@ function GestionAulas({ refreshKey, onDatosCambiados }) {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={handleCloseDeleteModal} disabled={isDeleting}>Cancelar</Button>
-          <Button variant="danger" onClick={handleConfirmDelete} disabled={isDeleting}>{isDeleting ? <Spinner size="sm"/> : 'Borrar'}</Button>
+          <Button variant="danger" onClick={handleConfirmDelete} disabled={isDeleting}>{isDeleting ? <Spinner size="sm" /> : 'Borrar'}</Button>
         </Modal.Footer>
       </Modal>
 
@@ -216,7 +225,7 @@ function GestionAulas({ refreshKey, onDatosCambiados }) {
         <Modal.Footer>
           <Button variant="secondary" onClick={handleCloseEditModal} disabled={isUpdating}>Cancelar</Button>
           <Button variant="primary" onClick={handleSaveChanges} disabled={isUpdating || !editNombre}>
-            {isUpdating ? <Spinner size="sm"/> : 'Guardar Cambios'}
+            {isUpdating ? <Spinner size="sm" /> : 'Guardar Cambios'}
           </Button>
         </Modal.Footer>
       </Modal>

@@ -1,10 +1,11 @@
-// frontend/src/components/GestionRequisitos.jsx (Refactorizado)
+// frontend/src/components/GestionRequisitos.jsx (Versión Completa y Corregida)
 import { useState, useEffect } from 'react';
-import { Form, Button, Card, Spinner, ListGroup, Row, Col } from 'react-bootstrap';
+import { Form, Button, Card, Spinner, ListGroup, Row, Col, Badge } from 'react-bootstrap';
 import { toast } from 'react-toastify';
-
-// 1. Importamos el servicio
 import { apiFetch } from '../apiService';
+
+// Copiamos los tipos de aula para el dropdown
+const TIPOS_AULA = ["Normal", "Laboratorio", "Gimnasio", "Sala de Informática", "Taller", "Otro"];
 
 function GestionRequisitos({ refreshKey, onDatosCambiados }) {
   const [cursos, setCursos] = useState([]);
@@ -12,18 +13,15 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
   const [cursoSeleccionado, setCursoSeleccionado] = useState("");
   const [materiaSeleccionada, setMateriaSeleccionada] = useState("");
   const [horas, setHoras] = useState("");
+  const [tipoAulaReq, setTipoAulaReq] = useState(TIPOS_AULA[0]);
   const [requisitosDelCurso, setRequisitosDelCurso] = useState([]);
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isReqLoading, setIsReqLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const TIPOS_AULA = ["Normal", "Laboratorio", "Gimnasio", "Sala de Informática", "Taller", "Otro"];
-  const [tipoAulaReq, setTipoAulaReq] = useState(TIPOS_AULA[0]);
-
 
   async function cargarDatosMaestros() {
     setIsDataLoading(true);
     try {
-      // 2. Usamos apiFetch con Promise.all
       const [cursosData, materiasData] = await Promise.all([
         apiFetch('/api/cursos'),
         apiFetch('/api/materias')
@@ -32,6 +30,7 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
       setCursos(cursosData);
       setMaterias(materiasData);
 
+      // Pre-seleccionar si hay datos
       if (cursosData.length > 0) setCursoSeleccionado(cursosData[0].id);
       if (materiasData.length > 0) setMateriaSeleccionada(materiasData[0].id);
 
@@ -48,7 +47,6 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
     }
     setIsReqLoading(true);
     try {
-      // 3. Usamos apiFetch
       const data = await apiFetch(`/api/requisitos/${cursoId}`);
       setRequisitosDelCurso(data);
     } catch (error) {
@@ -62,8 +60,10 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
   }, [refreshKey]);
 
   useEffect(() => {
-    cargarRequisitosDelCurso(cursoSeleccionado);
-  }, [cursoSeleccionado, refreshKey]);
+    if (cursoSeleccionado) { // Solo cargar si hay un curso seleccionado
+      cargarRequisitosDelCurso(cursoSeleccionado);
+    }
+  }, [cursoSeleccionado, refreshKey]); // Quité cursoSeleccionado de aquí para que no se resetee, pero lo volví a poner
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -78,10 +78,9 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
         curso_id: cursoSeleccionado,
         materia_id: materiaSeleccionada,
         horas_semanales: parseInt(horas, 10),
-        tipo_aula_requerida: tipoAulaReq // <-- ¡AÑADE ESTA LÍNEA!
+        tipo_aula_requerida: tipoAulaReq
       };
 
-      // 4. Usamos apiFetch
       await apiFetch('/api/requisitos', {
         method: 'POST',
         body: JSON.stringify(requisitoData)
@@ -94,8 +93,9 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
       if (onDatosCambiados) onDatosCambiados();
     } catch (error) {
       toast.error(`Error al guardar: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   }
 
   return (
@@ -106,24 +106,38 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
           {isDataLoading ? (
             <div className="text-center"><Spinner animation="border" /></div>
           ) : (
-            <Row className="mb-3 align-items-baseline">
-              {/* Ajusta a md={3} */}
+            <Row className="mb-3 align-items-baseline"> {/* Aplicamos la alineación aquí */}
+              
               <Form.Group as={Col} md={3} controlId="req-curso">
                 <Form.Label>Curso:</Form.Label>
-                <Form.Select /* ... */ >
-                  {/* ... */}
+                <Form.Select
+                  value={cursoSeleccionado}
+                  onChange={(e) => setCursoSeleccionado(e.target.value)}
+                  disabled={isSubmitting || isDataLoading}
+                >
+                  <option value="">-- Seleccionar Curso --</option> {/* Opción default */}
+                  {/* ESTA PARTE ES CLAVE */}
+                  {cursos.map(curso => (
+                    <option key={curso.id} value={curso.id}>{curso.nombre}</option>
+                  ))}
                 </Form.Select>
               </Form.Group>
 
-              {/* Ajusta a md={3} */}
               <Form.Group as={Col} md={3} controlId="req-materia">
                 <Form.Label>Materia:</Form.Label>
-                <Form.Select /* ... */ >
-                  {/* ... */}
+                <Form.Select
+                  value={materiaSeleccionada}
+                  onChange={(e) => setMateriaSeleccionada(e.target.value)}
+                  disabled={isSubmitting || isDataLoading}
+                >
+                   <option value="">-- Seleccionar Materia --</option> {/* Opción default */}
+                   {/* ESTA PARTE ES CLAVE */}
+                  {materias.map(materia => (
+                    <option key={materia.id} value={materia.id}>{materia.nombre}</option>
+                  ))}
                 </Form.Select>
               </Form.Group>
-
-              {/* --- ¡AÑADE ESTE NUEVO GRUPO! --- */}
+              
               <Form.Group as={Col} md={3} controlId="req-tipo-aula">
                 <Form.Label>Tipo de Aula Req.:</Form.Label>
                 <Form.Select
@@ -136,12 +150,17 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
                   ))}
                 </Form.Select>
               </Form.Group>
-              {/* --- FIN NUEVO GRUPO --- */}
 
-              {/* Ajusta a md={3} */}
               <Form.Group as={Col} md={3} controlId="req-horas">
                 <Form.Label>Horas Semanales:</Form.Label>
-                <Form.Control /* ... */ />
+                <Form.Control
+                  type="number"
+                  min="1"
+                  placeholder="Ej: 5"
+                  value={horas}
+                  onChange={(e) => setHoras(e.target.value)}
+                  disabled={isSubmitting}
+                />
               </Form.Group>
             </Row>
           )}
@@ -165,8 +184,7 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
               <ListGroup.Item key={req.id}>
                 {req.materia_nombre}
                 <span className="text-muted ms-2">({req.horas_semanales} horas)</span>
-                {/* ¡AÑADIDO! */}
-                {req.tipo_aula_requerida !== "Normal" && (
+                {req.tipo_aula_requerida && req.tipo_aula_requerida !== "Normal" && (
                   <Badge bg="info" className="ms-2">{req.tipo_aula_requerida}</Badge>
                 )}
               </ListGroup.Item>
