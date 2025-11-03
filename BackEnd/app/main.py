@@ -1,6 +1,7 @@
 import json
 import uuid
 from fastapi import FastAPI, Response, Depends, HTTPException, status
+from fastapi import BackgroundTasks, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Set
@@ -10,6 +11,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import app.seguridad as seguridad
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+from app.database import SessionLocal, get_db, crear_tablas
 from app.database import (
     SessionLocal, engine, Base, get_db, crear_tablas,
     ProfesorDB, MateriaDB, CursoDB, AulaDB, RequisitoDB, AsignacionDB, UsuarioDB,
@@ -415,109 +417,112 @@ def _solve_recursive(
 
 
 # --- 3. Endpoint principal del Solver (MODIFICADO para cargar Almuerzo) ---
-@app.post("/api/generar-horario-completo", tags=["Solver"])
-def generar_horario_completo(request: SolverRequest, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+def _run_solver_task(request: SolverRequest, username: str):
+    """
+    Contiene toda la lógica del solver que se ejecutará en segundo plano.
+    Necesita crear su propia sesión de DB.
+    """
+    print(f"--- [TASK INICIADA] Empezando a generar horario para curso {request.curso_id} (Usuario: {username}) ---")
 
-    # 1. Limpiar horario anterior (sin cambios)
-    # ... (código de borrado) ...
-    asignaciones_a_borrar = db.query(AsignacionDB).filter(AsignacionDB.curso_id == request.curso_id).all()
-    for asign in asignaciones_a_borrar:
-        db.delete(asign)
+    # 1. Crear una sesión de DB local para esta tarea
+    db: Session = SessionLocal()
     try:
+        # 2. Limpiar horario anterior
+        asignaciones_a_borrar = db.query(AsignacionDB).filter(AsignacionDB.curso_id == request.curso_id).all()
+        for asign in asignaciones_a_borrar:
+            db.delete(asign)
         db.commit()
+
+        # 3. Preparar datos (Profesores, Aulas, Requisitos, etc.)
+        # (Este código es el mismo que tenías dentro de generar_horario_completo)
+        profesores_db = db.query(ProfesorDB).all()
+        profesores_map = {}
+        for p in profesores_db:
+            try: disponibilidad_set = set(json.loads(p.disponibilidad_json or '[]'))
+            except json.JSONDecodeError: disponibilidad_set = set()
+            profesores_map[p.id] = {"id": p.id, "nombre": p.nombre, "disponibilidad_set": disponibilidad_set}
+
+        aulas_db = db.query(AulaDB).all()
+        aulas_por_tipo: Dict[str, List[Dict]] = {}
+        for a in aulas_db:
+            aula_data = {"id": a.id, "nombre": a.nombre, "tipo": a.tipo}
+            aulas_por_tipo.setdefault(a.tipo, []).append(aula_data)
+
+        config_db = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
+        almuerzo_slots_set = set()
+        if config_db:
+            try: almuerzo_slots_set = set(json.loads(config_db.value_json).get("almuerzo_slots", []))
+            except json.JSONDecodeError: pass
+
+        req_ids_solicitados = [asign.requisito_id for asign in request.asignaciones]
+        requisitos_db = db.query(RequisitoDB).filter(RequisitoDB.curso_id == request.curso_id, RequisitoDB.id.in_(req_ids_solicitados)).all()
+        requisitos_map = {r.id: r for r in requisitos_db}
+
+        requisitos_a_asignar = []
+        for asign_request in request.asignaciones:
+            req = requisitos_map.get(asign_request.requisito_id)
+            if req:
+                requisitos_a_asignar.append({
+                    "req_id": req.id, "prof_id": asign_request.profesor_id,
+                    "horas_necesarias": req.horas_semanales, "materia_id": req.materia_id,
+                    "tipo_aula_requerida": req.tipo_aula_requerida
+                })
+
+        horario_ocupado_inicial: Dict[tuple[str, str], List[Dict]] = {}
+        asignaciones_externas = db.query(AsignacionDB).filter(AsignacionDB.curso_id != request.curso_id).all()
+        for a in asignaciones_externas:
+            horario_ocupado_inicial.setdefault((a.dia, a.hora_rango), []).append({
+                "curso_id": a.curso_id, "profesor_id": a.profesor_id, "aula_id": a.aula_id
+            })
+
+        # 4. Llamar al solver
+        solution_objects = _solve_recursive(
+            requisitos_a_asignar=requisitos_a_asignar,
+            profesores_map=profesores_map,
+            aulas_por_tipo=aulas_por_tipo,
+            curso_id=request.curso_id,
+            db=db, # Pasamos la sesión local de la tarea
+            horario_ocupado=horario_ocupado_inicial.copy(),
+            current_schedule=[],
+            almuerzo_slots_set=almuerzo_slots_set
+        )
+
+        # 5. Procesar el resultado
+        if solution_objects:
+            db.add_all(solution_objects)
+            db.commit()
+            # TODO: ¡Necesitamos notificar al usuario! (Mejora futura)
+            print(f"--- [TASK OK] Horario para {request.curso_id} generado con éxito. ---")
+        else:
+            # TODO: ¡Necesitamos notificar al usuario! (Mejora futura)
+            print(f"--- [TASK FALLÓ] No se encontró solución para {request.curso_id}. ---")
+
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error al limpiar horario anterior: {e}")
+        # TODO: ¡Necesitamos notificar al usuario! (Mejora futura)
+        print(f"--- [TASK ERROR] Falló la generación de horario para {request.curso_id}: {e} ---")
+        # Podríamos guardar este error en la DB para que el frontend lo consulte
 
-    # 2. Preparar datos (¡ahora incluye preferencias!)
-    
-    # Cargar Preferencias (Almuerzo)
-    almuerzo_slots_set = set()
-    try:
-        config_db = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
-        if config_db:
-            almuerzo_data = json.loads(config_db.value_json)
-            almuerzo_slots_set = set(almuerzo_data.get("almuerzo_slots", []))
-    except Exception:
-        pass # Si falla, el set queda vacío (no hay preferencias)
+    finally:
+        db.close() # ¡Muy importante cerrar la sesión de la tarea!
 
-    # Cargar Profesores (sin cambios)
-    profesores_map = {}
-    profesores_db = db.query(ProfesorDB).all()
-    for p in profesores_db:
-        try: disponibilidad_set = set(json.loads(p.disponibilidad_json or '[]'))
-        except json.JSONDecodeError: disponibilidad_set = set()
-        profesores_map[p.id] = {"id": p.id, "nombre": p.nombre, "disponibilidad_set": disponibilidad_set}
+@app.post("/api/generar-horario-completo", status_code=status.HTTP_202_ACCEPTED)
+def generar_horario_completo_async(
+    request: SolverRequest,
+    background_tasks: BackgroundTasks, # 1. Inyectamos las Tareas de Fondo
+    current_user: dict = Depends(get_current_user) # 2. Obtenemos el usuario (para el log)
+):
 
-    # Cargar Aulas (sin cambios)
-    aulas_db = db.query(AulaDB).all()
-    aulas_por_tipo: Dict[str, List[Dict]] = {}
-    for a in aulas_db:
-        aula_data = {"id": a.id, "nombre": a.nombre, "tipo": a.tipo}
-        aulas_por_tipo.setdefault(a.tipo, []).append(aula_data)
-
-    # Cargar Requisitos (sin cambios)
-    req_ids_solicitados = [asign.requisito_id for asign in request.asignaciones]
-    requisitos_db = db.query(RequisitoDB).filter(RequisitoDB.curso_id == request.curso_id, RequisitoDB.id.in_(req_ids_solicitados)).all()
-    requisitos_map = {r.id: r for r in requisitos_db}
-    
-    # ... (Construir requisitos_a_asignar, sin cambios) ...
-    requisitos_a_asignar = []
-    profesores_solicitados = set()
-    for asign_request in request.asignaciones:
-        req = requisitos_map.get(asign_request.requisito_id)
-        if req and req.curso_id == request.curso_id:
-            requisitos_a_asignar.append({
-                "req_id": req.id, "prof_id": asign_request.profesor_id,
-                "horas_necesarias": req.horas_semanales, "materia_id": req.materia_id,
-                "tipo_aula_requerida": req.tipo_aula_requerida
-            })
-            profesores_solicitados.add(asign_request.profesor_id)
-    for prof_id in profesores_solicitados:
-        if prof_id not in profesores_map:
-             raise HTTPException(status_code=404, detail=f"Profesor con ID {prof_id} no encontrado.")
-
-    # Construir horario_ocupado INICIAL (sin cambios)
-    horario_ocupado_inicial: Dict[tuple[str, str], List[Dict]] = {}
-    asignaciones_externas = db.query(AsignacionDB).filter(AsignacionDB.curso_id != request.curso_id).all()
-    for a in asignaciones_externas:
-        horario_ocupado_inicial.setdefault((a.dia, a.hora_rango), []).append({
-            "curso_id": a.curso_id, "profesor_id": a.profesor_id, "aula_id": a.aula_id
-        })
-    
-    # 3. Llamar al solver recursivo (¡con el nuevo parámetro!)
-    solution_objects = _solve_recursive(
-        requisitos_a_asignar=requisitos_a_asignar,
-        profesores_map=profesores_map,
-        aulas_por_tipo=aulas_por_tipo,
-        curso_id=request.curso_id,
-        db=db,
-        horario_ocupado=horario_ocupado_inicial.copy(),
-        current_schedule=[],
-        almuerzo_slots_set=almuerzo_slots_set # ¡Aquí pasamos las preferencias!
+    # 3. Añadimos la función _run_solver_task a la cola de tareas
+    #    Le pasamos los datos que necesita
+    background_tasks.add_task(
+        _run_solver_task,
+        request=request,
+        username=current_user["username"]
     )
 
-    # 4. Procesar el resultado (sin cambios)
-    if solution_objects:
-        new_assignments_db = solution_objects
-        try:
-            db.add_all(new_assignments_db)
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail=f"Error al guardar horario: {e}")
-        
-        assigned_count = len(new_assignments_db)
-        total_requested_hours = sum(r["horas_necesarias"] for r in requisitos_a_asignar)
-        faltantes = total_requested_hours - assigned_count
-        
-        if faltantes > 0:
-            return {"mensaje": f"Solución encontrada (DB), incompleta. Faltaron {faltantes} horas.", "faltantes_total": faltantes}
-        else:
-            return {"mensaje": "¡Horario completo generado (DB)!","faltantes_total": 0}
-    else:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No se pudo encontrar un horario válido (DB).")
-# --- Endpoints de la API (AHORA SÍ PUEDEN USAR LAS DEFINICIONES ANTERIORES) ---
+    # 4. Respondemos INMEDIATAMENTE
+    return {"mensaje": "¡Generación de horario iniciada! Esto puede tardar unos segundos. Podrás ver el resultado en la pestaña 'Visualizar' cuando termine."}
 
 # --- Endpoints de Gestión (CRUD) ---
 @app.get("/api/profesores", response_model=List[Profesor])

@@ -96,20 +96,27 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
     // 2. Ejecución de la llamada a la API
     setIsSubmitting(true);
     try {
+      const solverRequest = {
+        curso_id: cursoSeleccionado,
+        asignaciones: asignacionesArray
+      };
+
+      // Llamamos al endpoint (ahora asíncrono)
       const result = await apiFetch('/api/generar-horario-completo', {
         method: 'POST',
         body: JSON.stringify(solverRequest)
       });
 
-      if (result.faltantes_total > 0) {
-        toast.warn(result.mensaje);
-      } else {
-        toast.success(result.mensaje);
-      }
-      onDatosCambiados();
+      // --- ¡CAMBIO IMPORTANTE AQUÍ! ---
+      // Ya no chequeamos 'faltantes_total', solo mostramos el mensaje de éxito (202)
+      toast.success(result.mensaje);
+
+      // NO llamamos a onDatosCambiados() todavía,
+      // porque el horario aún no está listo.
+      // El usuario tendrá que refrescar la pestaña 3 manualmente.
 
     } catch (error) {
-      // Manejo de errores (como lo teníamos antes)
+      // El manejo de errores 409, 401, etc., no cambia
       if (error.status === 409) {
         toast.error(`No se pudo generar: ${error.message}`);
       } else if (error.status === 401) {
@@ -119,10 +126,9 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
       }
       console.error("Detalle completo del error:", error);
     } finally {
-      // 3. Aseguramos que el spinner se desactive SIEMPRE
-      setIsSubmitting(false);
+      setIsSubmitting(false); // Desactivamos el spinner
     }
-  } // <-- Llave de cierre de handleGenerarHorario
+  }
 
   // --- Renderizado del Componente ---
   return (
