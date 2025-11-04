@@ -20,65 +20,42 @@ Base = declarative_base()
 
 # --- Modelos SQLAlchemy (Tablas) ---
 
-# Tabla de asociación para la disponibilidad (muchos a muchos implícita, pero la guardaremos como JSON/Text)
-# SQLAlchemy no maneja bien listas simples directamente en columnas estándar.
-# Usaremos Text y serializaremos/deserializaremos JSON.
-
 class ProfesorDB(Base):
     __tablename__ = "profesores"
     id = Column(String, primary_key=True, index=True) # Usaremos los UUIDs como strings
-    nombre = Column(String, index=True)
-    # Guardaremos la lista de disponibilidad como un string JSON
+    nombre = Column(String, unique=True, index=True) # <-- AÑADIDO: unique=True
     disponibilidad_json = Column(Text, default='[]') 
-
-    # Relación (inversa): Qué asignaciones tiene este profesor
     asignaciones = relationship("AsignacionDB", back_populates="profesor")
 
 class MateriaDB(Base):
     __tablename__ = "materias"
     id = Column(String, primary_key=True, index=True)
-    nombre = Column(String, unique=True, index=True) # Nombre único
-
-    # Relación (inversa): En qué requisitos aparece esta materia
+    nombre = Column(String, unique=True, index=True) 
     requisitos = relationship("RequisitoDB", back_populates="materia")
-    # Relación (inversa): En qué asignaciones generadas aparece esta materia
     asignaciones = relationship("AsignacionDB", back_populates="materia")
 
 
 class CursoDB(Base):
     __tablename__ = "cursos"
     id = Column(String, primary_key=True, index=True)
-    nombre = Column(String, unique=True, index=True) # Nombre único
-
-    # Relación (inversa): Qué requisitos tiene este curso
+    nombre = Column(String, unique=True, index=True) 
     requisitos = relationship("RequisitoDB", back_populates="curso")
-    # Relación (inversa): Qué asignaciones generadas tiene este curso
     asignaciones = relationship("AsignacionDB", back_populates="curso")
-
-# ... (en BackEnd/app/database.py)
-# ... (después de la clase CursoDB)
 
 class AulaDB(Base):
     __tablename__ = "aulas"
     id = Column(String, primary_key=True, index=True)
-    nombre = Column(String, unique=True, index=True) # ej: "Aula 101", "Laboratorio"
-    tipo = Column(String, index=True, default="Normal") # ej: "Normal", "Laboratorio", "Gimnasio"
-
-    # Relación (inversa): Qué asignaciones tiene esta aula
+    nombre = Column(String, unique=True, index=True) 
+    tipo = Column(String, index=True, default="Normal") 
     asignaciones = relationship("AsignacionDB", back_populates="aula")
 
 class RequisitoDB(Base):
     __tablename__ = "requisitos_curso"
     id = Column(String, primary_key=True, index=True)
     horas_semanales = Column(Integer)
-
-    # Claves foráneas y relaciones (muchos a uno)
     curso_id = Column(String, ForeignKey("cursos.id"))
     materia_id = Column(String, ForeignKey("materias.id"))
-
-    # --- ¡ESTA LÍNEA FALTABA! ---
     tipo_aula_requerida = Column(String, default="Normal") 
-
     curso = relationship("CursoDB", back_populates="requisitos")
     materia = relationship("MateriaDB", back_populates="requisitos")
 
@@ -87,17 +64,11 @@ class AsignacionDB(Base):
     id = Column(String, primary_key=True, index=True)
     dia = Column(String)
     hora_rango = Column(String)
-
-    # Claves foráneas y relaciones (muchos a uno)
     curso_id = Column(String, ForeignKey("cursos.id"))
     materia_id = Column(String, ForeignKey("materias.id"))
     profesor_id = Column(String, ForeignKey("profesores.id"))
-
-    # --- ¡ESTAS DOS LÍNEAS SON LAS IMPORTANTES! ---
     aula_id = Column(String, ForeignKey("aulas.id"), nullable=True) 
     aula = relationship("AulaDB", back_populates="asignaciones")
-    # --- FIN ---
-
     curso = relationship("CursoDB", back_populates="asignaciones")
     materia = relationship("MateriaDB", back_populates="asignaciones")
     profesor = relationship("ProfesorDB", back_populates="asignaciones")
@@ -106,12 +77,12 @@ class UsuarioDB(Base):
     __tablename__ = "usuarios"
     username = Column(String, primary_key=True, index=True) # Usamos username como ID
     hashed_password = Column(String)
+    # --- CAMBIO AQUÍ ---
+    rol = Column(String, default="admin") # ej: "admin", "profesor"
 
 class ConfiguracionDB(Base):
     __tablename__ = "configuracion"
-    # Usaremos una 'clave' como ID primario, ej: "preferencias_horarios"
     key = Column(String, primary_key=True, index=True)
-    # Guardaremos la configuración (ej: la lista de slots de almuerzo) como un string JSON
     value_json = Column(Text, default='{}')
 
 
