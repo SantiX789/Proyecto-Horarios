@@ -1,10 +1,8 @@
-// frontend/src/components/TablaHorario.jsx (Modificado para Roles)
+// frontend/src/components/TablaHorario.jsx
 import { useState, useEffect } from 'react';
 import { Table, Spinner, Alert } from 'react-bootstrap';
 import { toast } from 'react-toastify';
-// CORRECCIÓN: Se añade la extensión .js
 import { apiFetch } from '../apiService.js'; 
-// CORRECCIÓN: Se añade la extensión .jsx
 import ModalEdicion from './ModalEdicion.jsx'; 
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
@@ -16,7 +14,6 @@ const HORARIOS_RANGOS = [
   "17:40 a 18:20", "18:20 a 19:00", "19:00 a 19:40"
 ];
 
-// 1. AÑADIMOS 'userRole' a las props recibidas
 function TablaHorario({ curso, refreshKey, onDatosCambiados, userRole }) {
   const [horariosDelCurso, setHorariosDelCurso] = useState({});
   const [isLoading, setIsLoading] = useState(false);
@@ -24,13 +21,11 @@ function TablaHorario({ curso, refreshKey, onDatosCambiados, userRole }) {
   const [modalData, setModalData] = useState(null);
 
   const handleCellClick = (asignacionData, dia, horaRango) => {
-    // 2. MODIFICACIÓN: Solo abrir el modal si es admin
+    // Solo permitir edición si es admin y hay datos
     if (!asignacionData || userRole !== 'admin') return;
 
-    console.log("Clic de admin detectado!", { asignacionData, dia, horaRango });
-
     setModalData({
-      curso: curso, // Nota: 'curso' será el nombre del curso (para admin)
+      curso: curso, 
       dia: dia,
       horaRango: horaRango,
       asignacion: asignacionData
@@ -49,11 +44,8 @@ function TablaHorario({ curso, refreshKey, onDatosCambiados, userRole }) {
     }
   };
 
-
   async function cargarHorarioDelCurso() {
-    // 3. MODIFICACIÓN: Lógica de fetch basada en el rol
-    
-    // Si somos admin pero no hemos seleccionado curso, no cargar nada
+    // Si somos admin y no hay curso seleccionado, limpiamos y salimos
     if (userRole === 'admin' && !curso) {
       setHorariosDelCurso({});
       return;
@@ -62,19 +54,47 @@ function TablaHorario({ curso, refreshKey, onDatosCambiados, userRole }) {
     setIsLoading(true);
     try {
       let data;
-      if (userRole === 'admin' && curso) {
-        // Vista Admin: Cargar por nombre de curso
+      
+      if (userRole === 'admin') {
+        // --- CASO ADMIN: Recibe diccionario estructurado ---
+        // { "07:40 a 08:20": { "Lunes": { text: "Profe (Mat)", aula_nombre: "Aula 1" } } }
         data = await apiFetch(`/api/horarios/${curso}`);
-      } else if (userRole !== 'admin') {
-        // Vista Profesor: Cargar el horario personal
-        // (Esto requiere que el endpoint /api/horarios/mi-horario exista en el backend)
-        data = await apiFetch(`/api/horarios/mi-horario`);
+        setHorariosDelCurso(data);
+
       } else {
-        data = {}; // Caso por defecto (ej. admin sin curso seleccionado)
+        // --- CASO PROFESOR: Recibe lista plana ---
+        // [ { dia: "Lunes", hora_rango: "...", materia: "...", curso: "...", aula: "..." } ]
+        const listaClases = await apiFetch(`/api/horarios/mi-horario`);
+        
+        // TRANSFORMACIÓN MÁGICA: De Lista a Diccionario para que la tabla lo entienda
+        const horarioTransformado = {};
+        
+        if (Array.isArray(listaClases)) {
+            listaClases.forEach(clase => {
+                const rango = clase.hora_rango;
+                const dia = clase.dia;
+
+                if (!horarioTransformado[rango]) {
+                    horarioTransformado[rango] = {};
+                }
+
+                // Construimos el objeto celda como lo espera el renderizado
+                horarioTransformado[rango][dia] = {
+                    id: clase.id,
+                    // Para el profe, mostramos "Curso - Materia"
+                    text: `${clase.curso} - ${clase.materia}`, 
+                    aula_nombre: clase.aula,
+                    // Guardamos datos extra por si acaso
+                    ...clase 
+                };
+            });
+        }
+        setHorariosDelCurso(horarioTransformado);
       }
-      setHorariosDelCurso(data);
+
     } catch (error) {
       toast.error(`Error al cargar el horario: ${error.message}`);
+      setHorariosDelCurso({});
     } finally {
       setIsLoading(false);
     }
@@ -82,14 +102,14 @@ function TablaHorario({ curso, refreshKey, onDatosCambiados, userRole }) {
 
   useEffect(() => {
     cargarHorarioDelCurso();
-    // 4. MODIFICACIÓN: El efecto ahora también depende del userRole
   }, [curso, refreshKey, userRole]);
 
-  // --- Renderizado Condicional ---
-  // (Modificamos el mensaje para la vista de admin)
+  // --- Renderizado ---
+
   if (userRole === 'admin' && !curso) {
     return <Alert variant="info" className="mt-3">Selecciona un curso para ver su horario.</Alert>;
   }
+
   if (isLoading) {
     return (
       <div className="text-center mt-4">
@@ -99,54 +119,58 @@ function TablaHorario({ curso, refreshKey, onDatosCambiados, userRole }) {
       </div>
     );
   }
+
   const tieneHorarios = Object.keys(horariosDelCurso).length > 0;
+
   if (!tieneHorarios && !isLoading) {
-    // Mensaje genérico para admin o profesor
-    return <Alert variant="warning" className="mt-3">No hay ningún horario generado para mostrar.</Alert>;
+    return <Alert variant="warning" className="mt-3">No hay clases asignadas para mostrar.</Alert>;
   }
 
-  // --- Renderizado Principal ---
   return (
     <>
-      <Table bordered hover responsive size="sm" className="mt-3">
+      <Table bordered hover responsive size="sm" className="mt-3 shadow-sm">
         <thead className="table-primary text-center">
           <tr>
-            <th>Hora</th>
-            <th>Lunes</th>
-            <th>Martes</th>
-            <th>Miércoles</th>
-            <th>Jueves</th>
-            <th>Viernes</th>
+            <th style={{ width: '150px' }}>Hora</th>
+            {DIAS.map(dia => <th key={dia}>{dia}</th>)}
           </tr>
         </thead>
         <tbody>
           {HORARIOS_RANGOS.map(horaRango => (
             <tr key={horaRango}>
-              <td>{horaRango}</td>
+              <td className="fw-bold text-muted" style={{ fontSize: '0.85rem' }}>{horaRango}</td>
+              
               {DIAS.map(dia => {
+                // Ahora esto funciona tanto para Admin (backend devuelve dict) 
+                // como para Profe (frontend transformó lista a dict)
                 const asignacionData = horariosDelCurso[horaRango]?.[dia];
+                
                 const displayText = asignacionData ? asignacionData.text : "";
                 const displayAula = asignacionData ? asignacionData.aula_nombre : "";
 
                 return (
                   <td
                     key={dia}
-                    className={asignacionData ? "table-light" : ""}
-                    // 5. MODIFICACIÓN: La función 'handleCellClick' ya filtra el rol
+                    className={asignacionData ? "table-light text-center align-middle" : ""}
                     onClick={() => handleCellClick(asignacionData, dia, horaRango)}
                     style={{
-                      // 6. MODIFICACIÓN: Cambiar cursor basado en el rol
                       cursor: (asignacionData && userRole === 'admin') ? 'pointer' : 'default',
-                      lineHeight: 1.2,
-                      fontSize: '0.9em'
+                      height: '50px',
+                      backgroundColor: asignacionData ? '#e3f2fd' : 'transparent' 
                     }}
                   >
-                    {displayText}
-                    {displayAula && (
-                      <>
-                        <br />
-                        <small className="text-muted">{displayAula}</small>
-                      </>
+                    {asignacionData && (
+                        <div style={{ lineHeight: '1.2' }}>
+                            <div className="fw-bold" style={{ fontSize: '0.9rem' }}>
+                                {displayText}
+                            </div>
+                            {displayAula && (
+                                <div className="text-secondary" style={{ fontSize: '0.8rem' }}>
+                                    <i className="bi bi-geo-alt-fill me-1"></i>
+                                    {displayAula}
+                                </div>
+                            )}
+                        </div>
                     )}
                   </td>
                 )
@@ -156,7 +180,6 @@ function TablaHorario({ curso, refreshKey, onDatosCambiados, userRole }) {
         </tbody>
       </Table>
 
-      {/* El modal solo se mostrará si 'handleCellClick' lo permite (solo admins) */}
       <ModalEdicion
         show={showModal}
         handleClose={handleCloseModal}
@@ -168,4 +191,3 @@ function TablaHorario({ curso, refreshKey, onDatosCambiados, userRole }) {
 }
 
 export default TablaHorario;
-

@@ -144,26 +144,31 @@ def get_current_admin_user(current_user: dict = Depends(get_current_user)):
         )
     return current_user
 
-# --- Funciones del Solver (sin cambios) ---
-def _is_prof_and_curso_available(
-    dia: str, hora_rango: str, profesor_id: str, curso_id: str, horario_ocupado: Dict[tuple[str, str], List[Dict]]
-) -> bool:
-    ocupaciones_en_slot = horario_ocupado.get((dia, hora_rango), [])
-    for ocupacion in ocupaciones_en_slot:
-        if ocupacion["curso_id"] == curso_id: return False
-        if ocupacion["profesor_id"] == profesor_id: return False
+def _is_prof_and_curso_available(dia: str, hora_rango: str, profesor_id: str, curso_id: str, horario_ocupado: dict) -> bool:
+    # Buscamos si existe alguna lista de asignaciones para este dia y hora
+    asignaciones_en_slot = horario_ocupado.get((dia, hora_rango), [])
+    
+    # Revisamos todas las asignaciones que ocurren en este momento
+    for ocupacion in asignaciones_en_slot:
+        if ocupacion["curso_id"] == curso_id:
+            return False # El curso ya tiene clase
+        if ocupacion["profesor_id"] == profesor_id:
+            return False # El profesor ya está ocupado
+            
     return True
 
-def _find_available_aula(
-    dia: str, hora_rango: str, tipo_aula_req: str, aulas_disponibles: List[Dict], horario_ocupado: Dict[tuple[str, str], List[Dict]]
-) -> Optional[str]:
-    aulas_ocupadas_en_slot = {
-        ocupacion["aula_id"] for ocupacion in horario_ocupado.get((dia, hora_rango), []) 
-        if ocupacion.get("aula_id")
-    }
+def _find_available_aula(dia: str, hora_rango: str, tipo_req: str, aulas_disponibles: list, horario_ocupado: dict):
+    # Obtenemos asignaciones en este slot
+    asignaciones_en_slot = horario_ocupado.get((dia, hora_rango), [])
+    
+    # Creamos un set con los IDs de las aulas ocupadas en este momento
+    aulas_ocupadas_ids = {ocupacion["aula_id"] for ocupacion in asignaciones_en_slot}
+    
+    # Buscamos la primera aula que coincida con el tipo y NO esté ocupada
     for aula in aulas_disponibles:
-        if aula["tipo"] == tipo_aula_req and aula["id"] not in aulas_ocupadas_en_slot:
-            return aula["id"]
+        if aula["tipo"] == tipo_req and aula["id"] not in aulas_ocupadas_ids:
+            return aula # Retornamos el objeto aula entero
+            
     return None
 
 def _solve_recursive(
@@ -226,17 +231,33 @@ def _solve_recursive(
                 hours_left_to_assign, remaining_preferidos, remaining_no_preferidos, schedule_so_far
             )
         if _is_prof_and_curso_available(dia, hora_rango, profesor_id, curso_id, horario_ocupado):
-            aula_id_encontrada = _find_available_aula(dia, hora_rango, tipo_aula_req, aulas_disponibles_para_tipo, horario_ocupado)
-            if aula_id_encontrada:
+            aula_obj = _find_available_aula(dia, hora_rango, tipo_aula_req, aulas_disponibles_para_tipo, horario_ocupado)
+            
+            if aula_obj: # Si encontramos un aula
+                aula_id_str = aula_obj["id"] # <--- CORRECCIÓN: Extraemos solo el ID
+                
                 new_asignacion_obj = AsignacionDB(
                     id=f"a-{uuid.uuid4()}", curso_id=curso_id, profesor_id=profesor_id,
                     materia_id=current_req["materia_id"],
                     dia=dia, hora_rango=hora_rango,
-                    aula_id=aula_id_encontrada
+                    aula_id=aula_id_str # <--- Ahora pasamos el string, no el dict
                 )
+                
                 horario_ocupado.setdefault((dia, hora_rango), []).append({
-                    "curso_id": curso_id, "profesor_id": profesor_id, "aula_id": aula_id_encontrada
+                    "curso_id": curso_id, 
+                    "profesor_id": profesor_id, 
+                    "aula_id": aula_id_str # <--- Guardamos solo el ID en el tracker
                 })
+                
+                result = _assign_hours_recursive(
+                    hours_left_to_assign - 1,
+                    remaining_preferidos,
+                    remaining_no_preferidos,
+                    schedule_so_far + [new_asignacion_obj]
+                )
+                
+                if result: return result
+                horario_ocupado[(dia, hora_rango)].pop()
                 result = _assign_hours_recursive(
                     hours_left_to_assign - 1,
                     remaining_preferidos,
@@ -734,6 +755,59 @@ def agregar_requisito(
         tipo_aula_requerida=db_requisito.tipo_aula_requerida
     )
 
+# --- (NUEVO) Endpoint para el Horario del Profesor ---
+@app.get("/api/horarios/mi-horario", response_model=List[Dict])
+def obtener_mi_horario(
+    current_user: dict = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    usuario_logueado = current_user["username"]
+    print(f"--- DEBUG: Usuario logueado: '{usuario_logueado}' ---")
+
+    # 1. Buscar al profesor por 'nombre'
+    profesor_db = db.query(ProfesorDB).filter(ProfesorDB.nombre == usuario_logueado).first()
+    
+    if not profesor_db:
+        print(f"--- DEBUG: ¡ERROR! No se encontró ningún profesor en la tabla 'profesores' con el nombre '{usuario_logueado}' ---")
+        # Tip: A veces el usuario es "Juan" y el profesor es "Juan Perez" o "juan" (minúscula)
+        return [] 
+    
+    print(f"--- DEBUG: Profesor encontrado. ID: {profesor_db.id} ---")
+
+    # 2. Traemos las asignaciones
+    asignaciones_db = db.query(AsignacionDB)\
+        .options(
+            joinedload(AsignacionDB.curso), 
+            joinedload(AsignacionDB.materia),
+            joinedload(AsignacionDB.aula)
+        )\
+        .filter(AsignacionDB.profesor_id == profesor_db.id)\
+        .all()
+
+    print(f"--- DEBUG: Cantidad de clases encontradas para este profe: {len(asignaciones_db)} ---")
+
+    # 3. Formateamos
+    horario_formateado = []
+    for asignacion in asignaciones_db:
+        rango = asignacion.hora_rango
+        try:
+            hora_inicio = rango.split(" - ")[0] if rango else ""
+        except:
+            hora_inicio = ""
+
+        horario_formateado.append({
+            "id": asignacion.id,
+            "dia": asignacion.dia,
+            "hora_inicio": hora_inicio,
+            "hora_rango": rango,
+            "materia": asignacion.materia.nombre if asignacion.materia else "Materia eliminada",
+            "curso": asignacion.curso.nombre if asignacion.curso else "Curso eliminado",
+            "aula": asignacion.aula.nombre if asignacion.aula else "Sin Aula",
+            "color": "#3498db" 
+        })
+
+    return horario_formateado
+
 # --- Endpoint de Vista de Horario (Admin) ---
 @app.get("/api/horarios/{curso_nombre}", response_model=Dict[str, Dict[str, dict]])
 def obtener_horario_curso(
@@ -770,55 +844,7 @@ def obtener_horario_curso(
         horario_vista.setdefault(hora_rango, {})[dia] = asignacion_data
     return horario_vista
 
-# --- (NUEVO) Endpoint para el Horario del Profesor ---
-@app.get("/api/horarios/mi-horario", response_model=Dict[str, Dict[str, dict]])
-def obtener_mi_horario(
-    current_user: dict = Depends(get_current_user), # Cualquier usuario logueado
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene el horario específico del profesor que está logueado.
-    Asume que el 'username' del usuario es igual al 'nombre' del profesor.
-    """
-    
-    # 1. Buscar el ID del profesor basado en el nombre de usuario
-    profesor_db = db.query(ProfesorDB).filter(ProfesorDB.nombre == current_user["username"]).first()
-    
-    if not profesor_db:
-        # Si no hay profesor (p.ej. es un admin), devuelve horario vacío
-        return {} 
-    
-    profesor_id = profesor_db.id
 
-    # 2. Buscar asignaciones SÓLO de ese profesor
-    asignaciones_db = db.query(AsignacionDB)\
-                        .options(
-                            joinedload(AsignacionDB.curso), 
-                            joinedload(AsignacionDB.materia),
-                            joinedload(AsignacionDB.aula)
-                        )\
-                        .filter(AsignacionDB.profesor_id == profesor_id)\
-                        .all()
-
-    horario_vista = {}
-    for asignacion in asignaciones_db:
-        hora_rango = asignacion.hora_rango
-        dia = asignacion.dia
-        
-        # Mostramos el curso y la materia
-        curso_nombre = asignacion.curso.nombre if asignacion.curso else "??"
-        mat_nombre = asignacion.materia.nombre if asignacion.materia else "??"
-        aula_nombre = asignacion.aula.nombre if asignacion.aula else "Sin Aula"
-        
-        texto_celda = f"{curso_nombre} ({mat_nombre})"
-        
-        horario_vista.setdefault(hora_rango, {})[dia] = {
-            "text": texto_celda,
-            "id": asignacion.id,
-            "aula_nombre": aula_nombre
-        }
-
-    return horario_vista
 
 
 # --- Endpoints de Autenticación ---
@@ -881,37 +907,64 @@ def borrar_horarios_curso(
 @app.get("/api/asignaciones/{asignacion_id}/slots-disponibles", response_model=List[Dict])
 def obtener_slots_disponibles_para_asignacion(
     asignacion_id: str, 
-    current_user: dict = Depends(get_current_admin_user), # Admin
+    current_user: dict = Depends(get_current_admin_user),
     db: Session = Depends(get_db)
 ):
     asignacion_actual = db.query(AsignacionDB).filter(AsignacionDB.id == asignacion_id).first()
     if not asignacion_actual: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
+    
     profesor_id = asignacion_actual.profesor_id
     curso_id = asignacion_actual.curso_id
     profesor_db = db.query(ProfesorDB).filter(ProfesorDB.id == profesor_id).first()
-    if not profesor_db: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profesor asociado no encontrado")
-    try: disponibilidad_general = set(json.loads(profesor_db.disponibilidad_json or '[]'))
-    except json.JSONDecodeError: disponibilidad_general = set()
-    if not disponibilidad_general: return []
-    todas_las_asignaciones = db.query(AsignacionDB).filter(AsignacionDB.id != asignacion_id).all()
-    horario_ocupado: Dict[tuple[str, str], Dict[str, str]] = {}
-    for a in todas_las_asignaciones: 
-        horario_ocupado[(a.dia, a.hora_rango)] = {"curso_id": a.curso_id, "profesor_id": a.profesor_id, "aula_id": a.aula_id}
     
-    # (Necesitamos TODAS las aulas para verificar disponibilidad)
+    if not profesor_db: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profesor asociado no encontrado")
+    
+    try: 
+        disponibilidad_general = set(json.loads(profesor_db.disponibilidad_json or '[]'))
+    except json.JSONDecodeError: 
+        disponibilidad_general = set()
+    
+    if not disponibilidad_general: return []
+
+    todas_las_asignaciones = db.query(AsignacionDB).filter(AsignacionDB.id != asignacion_id).all()
+    
+    # --- CORRECCIÓN AQUÍ: Usar listas para permitir múltiples clases simultáneas ---
+    horario_ocupado: Dict[tuple[str, str], List[Dict[str, str]]] = {}
+    for a in todas_las_asignaciones: 
+        key = (a.dia, a.hora_rango)
+        if key not in horario_ocupado:
+            horario_ocupado[key] = []
+        
+        horario_ocupado[key].append({
+            "curso_id": a.curso_id, 
+            "profesor_id": a.profesor_id, 
+            "aula_id": a.aula_id
+        })
+    # -----------------------------------------------------------------------------
+
+    # Cargar aulas
     aulas_db = db.query(AulaDB).all()
     aulas_por_tipo: Dict[str, List[Dict]] = {}
     for a in aulas_db:
-        aulas_por_tipo.setdefault(a.tipo, []).append({"id": a.id, "nombre": a.nombre, "tipo": a.tipo})
+        # Asegúrate de usar .tipo (o el atributo correcto de tu modelo DB)
+        tipo = getattr(a, "tipo", "Normal") 
+        aulas_por_tipo.setdefault(tipo, []).append({"id": a.id, "nombre": a.nombre, "tipo": tipo})
 
-    # (Necesitamos el tipo de aula que requiere esta asignación)
     requisito_db = db.query(RequisitoDB).filter(RequisitoDB.curso_id == curso_id, RequisitoDB.materia_id == asignacion_actual.materia_id).first()
     tipo_aula_req = requisito_db.tipo_aula_requerida if requisito_db else "Normal"
 
     slots_formateados = []
+    
+    # Ordenar slots para que la UI se vea bien (Lunes antes que Martes, etc.)
+    # Nota: sorted() sobre strings "Lunes-08:00" puede no ordenar días correctamente sin un mapa auxiliar, 
+    # pero eso es un problema menor de UI, no de crash.
     for slot_id in sorted(list(disponibilidad_general)):
         try:
-            dia_slot, hora_inicio_slot = slot_id.split('-')
+            parts = slot_id.split('-')
+            if len(parts) < 2: continue
+            dia_slot = parts[0]
+            hora_inicio_slot = parts[1]
+            
             hora_rango_slot = calcular_hora_rango(hora_inicio_slot)
             if not hora_rango_slot: continue
 
@@ -922,10 +975,16 @@ def obtener_slots_disponibles_para_asignacion(
             aula_libre = _find_available_aula(dia_slot, hora_rango_slot, tipo_aula_req, aulas_por_tipo.get(tipo_aula_req, []), horario_ocupado)
 
             if prof_y_curso_libres and aula_libre:
-                slots_formateados.append({"dia": dia_slot, "hora_inicio": hora_inicio_slot, "hora_rango": hora_rango_slot})
+                slots_formateados.append({
+                    "id": slot_id, # Es útil devolver el ID original para el frontend
+                    "dia": dia_slot, 
+                    "hora_inicio": hora_inicio_slot, 
+                    "hora_rango": hora_rango_slot,
+                    "aula_sugerida": aula_libre["nombre"] # Opcional: mostrar qué aula se usaría
+                })
         except ValueError: continue
+            
     return slots_formateados
-
 
 @app.get("/api/reportes/carga-horaria-profesor", response_model=List[ReporteCargaHoraria])
 def reporte_carga_horaria(
