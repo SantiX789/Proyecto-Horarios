@@ -1,10 +1,9 @@
-// frontend/src/components/GestionRequisitos.jsx (Versión Completa y Corregida)
+// frontend/src/components/GestionRequisitos.jsx
 import { useState, useEffect } from 'react';
 import { Form, Button, Card, Spinner, ListGroup, Row, Col, Badge } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { apiFetch } from '../apiService';
 
-// Copiamos los tipos de aula para el dropdown
 const TIPOS_AULA = ["Normal", "Laboratorio", "Gimnasio", "Sala de Informática", "Taller", "Otro"];
 
 function GestionRequisitos({ refreshKey, onDatosCambiados }) {
@@ -30,7 +29,6 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
       setCursos(cursosData);
       setMaterias(materiasData);
 
-      // Pre-seleccionar si hay datos
       if (cursosData.length > 0) setCursoSeleccionado(cursosData[0].id);
       if (materiasData.length > 0) setMateriaSeleccionada(materiasData[0].id);
 
@@ -60,10 +58,10 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
   }, [refreshKey]);
 
   useEffect(() => {
-    if (cursoSeleccionado) { // Solo cargar si hay un curso seleccionado
+    if (cursoSeleccionado) {
       cargarRequisitosDelCurso(cursoSeleccionado);
     }
-  }, [cursoSeleccionado, refreshKey]); // Quité cursoSeleccionado de aquí para que no se resetee, pero lo volví a poner
+  }, [cursoSeleccionado, refreshKey]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -98,6 +96,9 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
     }
   }
 
+  // Helper para mostrar nombre bonito
+  const getNombreCurso = (c) => c.nombre_display || `${c.anio} "${c.division}"`;
+
   return (
     <Card className="mt-3 shadow-sm border-0">
       <Card.Body>
@@ -106,7 +107,7 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
           {isDataLoading ? (
             <div className="text-center"><Spinner animation="border" /></div>
           ) : (
-            <Row className="mb-3 align-items-baseline"> {/* Aplicamos la alineación aquí */}
+            <Row className="mb-3 align-items-baseline">
               
               <Form.Group as={Col} md={3} controlId="req-curso">
                 <Form.Label>Curso:</Form.Label>
@@ -115,10 +116,11 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
                   onChange={(e) => setCursoSeleccionado(e.target.value)}
                   disabled={isSubmitting || isDataLoading}
                 >
-                  <option value="">-- Seleccionar Curso --</option> {/* Opción default */}
-                  {/* ESTA PARTE ES CLAVE */}
+                  <option value="">-- Seleccionar Curso --</option>
                   {cursos.map(curso => (
-                    <option key={curso.id} value={curso.id}>{curso.nombre}</option>
+                    <option key={curso.id} value={curso.id}>
+                      {getNombreCurso(curso)}
+                    </option>
                   ))}
                 </Form.Select>
               </Form.Group>
@@ -130,8 +132,7 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
                   onChange={(e) => setMateriaSeleccionada(e.target.value)}
                   disabled={isSubmitting || isDataLoading}
                 >
-                   <option value="">-- Seleccionar Materia --</option> {/* Opción default */}
-                   {/* ESTA PARTE ES CLAVE */}
+                   <option value="">-- Seleccionar Materia --</option>
                   {materias.map(materia => (
                     <option key={materia.id} value={materia.id}>{materia.nombre}</option>
                   ))}
@@ -179,10 +180,10 @@ function GestionRequisitos({ refreshKey, onDatosCambiados }) {
           <div className="text-center"><Spinner animation="border" /></div>
         ) : (
           <ListGroup variant="flush">
-            {requisitosDelCurso.length === 0 && <ListGroup.Item>Este curso no tiene requisitos.</ListGroup.Item>}
+            {requisitosDelCurso.length === 0 && <ListGroup.Item>Este curso no tiene requisitos cargados.</ListGroup.Item>}
             {requisitosDelCurso.map(req => (
               <ListGroup.Item key={req.id}>
-                {req.materia_nombre}
+                <strong>{req.materia_nombre}</strong>
                 <span className="text-muted ms-2">({req.horas_semanales} horas)</span>
                 {req.tipo_aula_requerida && req.tipo_aula_requerida !== "Normal" && (
                   <Badge bg="info" className="ms-2">{req.tipo_aula_requerida}</Badge>

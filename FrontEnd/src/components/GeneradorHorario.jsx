@@ -1,4 +1,4 @@
-// frontend/src/components/GeneradorHorario.jsx (Corregido)
+// frontend/src/components/GeneradorHorario.jsx (CORREGIDO FASE 1)
 import { useState, useEffect } from 'react';
 import { Form, Button, Card, Spinner, ListGroup, Row, Col } from 'react-bootstrap';
 import { toast } from 'react-toastify';
@@ -66,7 +66,7 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
   }
 
   async function handleGenerarHorario() {
-    // 1. VALIDACIÓN y PREPARACIÓN - Ahora DENTRO de la función
+    // 1. VALIDACIÓN
     if (!cursoSeleccionado) {
       toast.warn("Selecciona un curso.");
       return;
@@ -82,6 +82,7 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
       return;
     }
 
+    // Advertencia si faltan profes (opcional)
     if (asignacionesArray.length < requisitos.length) {
       if (!confirm("No has asignado profesores a todas las materias. ¿Deseas continuar igualmente?")) {
         return;
@@ -93,61 +94,55 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
       asignaciones: asignacionesArray
     };
 
-    // 2. Ejecución de la llamada a la API
+    // 2. Ejecución
     setIsSubmitting(true);
     try {
-      const solverRequest = {
-        curso_id: cursoSeleccionado,
-        asignaciones: asignacionesArray
-      };
-
       // Llamamos al endpoint (ahora asíncrono)
       const result = await apiFetch('/api/generar-horario-completo', {
         method: 'POST',
         body: JSON.stringify(solverRequest)
       });
 
-      // --- ¡CAMBIO IMPORTANTE AQUÍ! ---
-      // Ya no chequeamos 'faltantes_total', solo mostramos el mensaje de éxito (202)
       toast.success(result.mensaje);
 
-      // NO llamamos a onDatosCambiados() todavía,
-      // porque el horario aún no está listo.
-      // El usuario tendrá que refrescar la pestaña 3 manualmente.
-
     } catch (error) {
-      // El manejo de errores 409, 401, etc., no cambia
       if (error.status === 409) {
         toast.error(`No se pudo generar: ${error.message}`);
       } else if (error.status === 401) {
         toast.error("Error de autenticación. Intenta iniciar sesión de nuevo.");
       } else {
-        toast.error(`Error inesperado (${error.status || 'Red'}): ${error.message}`);
+        toast.error(`Error inesperado: ${error.message}`);
       }
-      console.error("Detalle completo del error:", error);
+      console.error("Error:", error);
     } finally {
-      setIsSubmitting(false); // Desactivamos el spinner
+      setIsSubmitting(false);
     }
   }
 
+  // --- Helper para mostrar nombre (CORRECCIÓN CLAVE) ---
+  const getNombreCurso = (c) => c.nombre_display || `${c.anio} "${c.division}"`;
+
   // --- Renderizado del Componente ---
   return (
-    <Card border="primary">
-      <Card.Header as="h3">Generador de Horarios</Card.Header>
+    <Card border="primary" className="mt-3 shadow-sm border-0">
+      <Card.Header as="h5">Generador de Horarios</Card.Header>
       <Card.Body>
         <Form>
           <Form.Group className="mb-3" controlId="gen-curso">
             <Form.Label>Selecciona un Curso para Generar:</Form.Label>
             {isDataLoading ? (
-              <Spinner animation="border" size="sm" />
+              <Spinner animation="border" size="sm" className="ms-2" />
             ) : (
               <Form.Select
                 value={cursoSeleccionado}
                 onChange={(e) => setCursoSeleccionado(e.target.value)}
               >
                 <option value="">-- Seleccionar Curso --</option>
+                {/* AQUÍ ESTABA EL ERROR: Ahora usamos getNombreCurso */}
                 {cursos.map(curso => (
-                  <option key={curso.id} value={curso.id}>{curso.nombre}</option>
+                  <option key={curso.id} value={curso.id}>
+                    {getNombreCurso(curso)}
+                  </option>
                 ))}
               </Form.Select>
             )}
@@ -156,29 +151,30 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
 
         <hr />
 
-        <Card.Title>Asignar Profesores a Materias:</Card.Title>
+        <h6 className="mb-3">Asignar Profesores a Materias:</h6>
         {isReqLoading ? (
           <div className="text-center"><Spinner animation="border" /></div>
         ) : (
           <ListGroup variant="flush">
             {requisitos.length === 0 && !cursoSeleccionado &&
-              <ListGroup.Item>Selecciona un curso para ver sus requisitos.</ListGroup.Item>
+              <ListGroup.Item className="text-muted fst-italic">Selecciona un curso primero.</ListGroup.Item>
             }
             {requisitos.length === 0 && cursoSeleccionado &&
-              <ListGroup.Item>Este curso no tiene requisitos. Cárgalos en la Pestaña 1.</ListGroup.Item>
+              <ListGroup.Item className="text-muted">Este curso no tiene requisitos cargados.</ListGroup.Item>
             }
 
             {requisitos.map(req => (
               <ListGroup.Item key={req.id}>
                 <Row>
                   <Col md={6} className="d-flex align-items-center">
-                    <span>
-                      {req.materia_nombre}
-                      <span className="text-muted ms-2">({req.horas_semanales} horas)</span>
-                    </span>
+                    <div>
+                      <strong>{req.materia_nombre}</strong>
+                      <span className="text-muted ms-2 small">({req.horas_semanales} hs)</span>
+                    </div>
                   </Col>
                   <Col md={6}>
                     <Form.Select
+                      size="sm"
                       value={asignaciones[req.id] || ""}
                       onChange={(e) => handleAsignacionChange(req.id, e.target.value)}
                       disabled={isDataLoading}
@@ -197,23 +193,25 @@ function GeneradorHorario({ refreshKey, onDatosCambiados }) {
 
         {requisitos.length > 0 && (
           <Button
-            variant="primary"
+            variant="success"
             size="lg"
             onClick={handleGenerarHorario}
             disabled={isSubmitting || isReqLoading || isDataLoading}
-            className="mt-3 w-100"
+            className="mt-4 w-100"
           >
             {isSubmitting ? (
-              <Spinner as="span" animation="border" size="sm" />
+              <>
+                <Spinner as="span" animation="border" size="sm" className="me-2" />
+                Generando...
+              </>
             ) : (
-              'Generar Horario Completo'
+              '⚡ Generar Horario Completo'
             )}
           </Button>
         )}
       </Card.Body>
     </Card>
-  ); // <-- Cierre del return
+  );
+}
 
-} // <-- Cierre de la función GeneradorHorario
-
-export default GeneradorHorario; // <-- Exportación
+export default GeneradorHorario;

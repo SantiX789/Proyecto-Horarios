@@ -1,0 +1,11 @@
+# Ignorar carpetas pesadas
+node_modules/
+venv/
+__pycache__/
+dist/
+
+# Ignorar base de datos y archivos de entorno
+*.sqlite
+*.db
+.env
+.DS_Store

@@ -1,98 +1,86 @@
-// frontend/src/components/Registro.jsx
+// FrontEnd/src/components/Registro.jsx
 import { useState } from 'react';
 import { Card, Form, Button, Spinner, Alert } from 'react-bootstrap';
 import { toast } from 'react-toastify';
+import { useNavigate } from 'react-router-dom';
 
-// 1. Importamos nuestro servicio de API
-import { apiFetch } from '../apiService';
+const API_URL = "http://127.0.0.1:8000";
 
-// Recibe una prop para volver al login
-function Registro({ onSwitchToLogin }) {
+function Registro() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!username || !password) {
-      setError("Por favor, completa ambos campos.");
-      return;
-    }
-    if (password.length < 4) {
-      setError("La contraseña debe tener al menos 4 caracteres.");
-      return;
-    }
-    
-    setIsLoading(true);
 
+    if (!username || !password) {
+      setError("Completa todos los campos.");
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      // 2. Llamamos al endpoint de registro
-      const data = await apiFetch('/api/register', {
+      const response = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
-        body: JSON.stringify({
-          username: username,
-          password: password
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
       });
 
-      // 3. ¡Éxito!
-      toast.success(`¡Usuario "${data.username}" creado! Ahora puedes iniciar sesión.`);
-      onSwitchToLogin(); // Volvemos al login automáticamente
+      const data = await response.json();
 
+      if (response.ok) {
+        toast.success("¡Usuario creado con éxito! Ahora inicia sesión.");
+        navigate('/'); // Volver al Login automáticamente
+      } else {
+        setError(data.detail || "Error al registrarse.");
+      }
     } catch (err) {
-      // 4. Manejo de errores (ej: "usuario ya existe")
-      setError(err.message || "Error al registrarse.");
+      setError("Error de conexión.");
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   return (
-    <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
-      <Card style={{ width: '400px' }} className="shadow-sm">
+    <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh', backgroundColor: '#e9ecef' }}>
+      <Card style={{ width: '400px' }} className="shadow">
         <Card.Body>
           <Card.Title as="h2" className="text-center mb-4">Crear Cuenta</Card.Title>
           <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3" controlId="register-username">
-              <Form.Label>Nombre de Usuario:</Form.Label>
+            <Form.Group className="mb-3">
+              <Form.Label>Elige un Usuario:</Form.Label>
               <Form.Control
                 type="text"
-                placeholder="Usuario"
+                placeholder="Ej: admin"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                disabled={isLoading}
               />
             </Form.Group>
-            <Form.Group className="mb-3" controlId="register-password">
-              <Form.Label>Contraseña:</Form.Label>
+            <Form.Group className="mb-3">
+              <Form.Label>Elige una Contraseña:</Form.Label>
               <Form.Control
                 type="password"
-                placeholder="Contraseña (mín. 4 caracteres)"
+                placeholder="Mínimo 4 caracteres"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
               />
             </Form.Group>
             
             {error && <Alert variant="danger">{error}</Alert>}
 
-            <Button variant="primary" type="submit" className="w-100" disabled={isLoading}>
-              {isLoading ? (
-                <Spinner as="span" animation="border" size="sm" />
-              ) : (
-                'Registrarse'
-              )}
+            <Button variant="success" type="submit" className="w-100" disabled={isLoading}>
+              {isLoading ? <Spinner size="sm" animation="border"/> : 'Registrarme'}
             </Button>
           </Form>
 
-          <hr />
-          
-          <div className="text-center">
-            {/* 5. Botón para volver al login */}
-            <Button variant="link" onClick={onSwitchToLogin}>
-              ¿Ya tienes cuenta? Inicia sesión
+          <div className="text-center mt-3">
+            <Button variant="link" onClick={() => navigate('/')}>
+              Volver al Login
             </Button>
           </div>
         </Card.Body>

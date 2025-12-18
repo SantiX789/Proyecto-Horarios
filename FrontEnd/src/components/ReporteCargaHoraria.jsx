@@ -1,82 +1,82 @@
-// frontend/src/components/ReporteCargaHoraria.jsx
-import React, { useState, useEffect } from 'react';
-import { Table, Spinner, Alert, Card } from 'react-bootstrap';
-import { toast } from 'react-toastify';
+// FrontEnd/src/components/ReporteCargaHoraria.jsx
+import { useState, useEffect } from 'react';
+import { Card, Table, ProgressBar, Badge } from 'react-bootstrap';
 import { apiFetch } from '../apiService';
+import { Bar } from 'react-chartjs-2'; // Opcional, pero usaremos barras simples de HTML primero
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 
-// Recibe refreshKey para saber cuándo recargar
+// Registramos componentes de gráficos (por si queremos expandir luego)
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+
 function ReporteCargaHoraria({ refreshKey }) {
-  const [data, setData] = useState([]); // [{ nombre_profesor: "...", horas_asignadas: 0 }]
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [reporte, setReporte] = useState([]);
 
-  // Cargar los datos del reporte
-  async function cargarReporte() {
-    setIsLoading(true);
-    setError("");
-    try {
-      const reporteData = await apiFetch('/api/reportes/carga-horaria-profesor');
-      setData(reporteData);
-    } catch (err) {
-      setError(err.message);
-      toast.error(`Error al cargar el reporte: ${err.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  // Cargar al montar y cuando refreshKey cambie
   useEffect(() => {
     cargarReporte();
   }, [refreshKey]);
 
-  // Renderizado
-  if (isLoading) {
-    return (
-      <div className="text-center mt-4">
-        <Spinner animation="border" role="status">
-          <span className="visually-hidden">Cargando reporte...</span>
-        </Spinner>
-      </div>
-    );
+  async function cargarReporte() {
+    try {
+      // Este endpoint ya lo creamos en el backend en la fase anterior
+      const data = await apiFetch('/api/reportes/carga-horaria-profesor');
+      setReporte(data);
+    } catch (error) {
+      console.error("Error cargando reporte:", error);
+    }
   }
 
-  if (error) {
-    return <Alert variant="danger" className="mt-3">Error: {error}</Alert>;
-  }
+  // Calculamos el máximo para la barra de progreso (ej: el que más trabaja tiene 20 hs)
+  const maxHoras = reporte.reduce((acc, curr) => Math.max(acc, curr.horas_asignadas), 0) || 1;
 
   return (
-    <Card className="mt-3 shadow-sm border-0">
-      <Card.Body>
-        <Card.Title>Reporte: Carga Horaria por Profesor</Card.Title>
-        <Card.Subtitle className="mb-2 text-muted">
-          Total de horas (bloques de 40 min) asignadas a cada profesor en todos los cursos.
-        </Card.Subtitle>
-        <Table striped bordered hover responsive size="sm" className="mt-3">
-          <thead className="table-primary">
-            <tr>
-              <th>#</th>
-              <th>Nombre del Profesor</th>
-              <th>Horas Asignadas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.length === 0 && (
+    <div className="mt-3">
+      <Card className="shadow-sm">
+        <Card.Header className="bg-info text-white fw-bold">
+            📊 Reporte de Carga Horaria Docente
+        </Card.Header>
+        <Card.Body>
+          <p className="text-muted">
+            Visualiza rápidamente cuántas horas cátedra tiene asignadas cada profesor en el horario actual.
+          </p>
+
+          <Table hover responsive size="sm">
+            <thead className="table-light">
               <tr>
-                <td colSpan="3" className="text-center">No hay datos para mostrar.</td>
+                <th style={{width: '30%'}}>Profesor</th>
+                <th style={{width: '15%'}} className="text-center">Horas Asignadas</th>
+                <th>Gráfico de Carga</th>
               </tr>
-            )}
-            {data.map((profesor, index) => (
-              <tr key={profesor.nombre_profesor}>
-                <td>{index + 1}</td>
-                <td>{profesor.nombre_profesor}</td>
-                <td>{profesor.horas_asignadas}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      </Card.Body>
-    </Card>
+            </thead>
+            <tbody>
+              {reporte.map((item, index) => (
+                <tr key={index}>
+                  <td className="fw-bold">{item.nombre_profesor}</td>
+                  <td className="text-center">
+                    <Badge bg={item.horas_asignadas > 0 ? "success" : "secondary"} pill style={{fontSize: '0.9em'}}>
+                        {item.horas_asignadas} hs
+                    </Badge>
+                  </td>
+                  <td className="align-middle">
+                    <ProgressBar 
+                        now={(item.horas_asignadas / maxHoras) * 100} 
+                        variant={item.horas_asignadas > 15 ? "warning" : "info"}
+                        style={{height: '10px'}}
+                    />
+                  </td>
+                </tr>
+              ))}
+              {reporte.length === 0 && (
+                <tr>
+                    <td colSpan="3" className="text-center py-4 text-muted">
+                        No hay horarios generados todavía.
+                    </td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+        </Card.Body>
+      </Card>
+    </div>
   );
 }
 
