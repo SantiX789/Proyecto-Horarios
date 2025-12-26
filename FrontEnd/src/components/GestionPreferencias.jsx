@@ -1,113 +1,38 @@
-// FrontEnd/src/components/GestionPreferencias.jsx
 import { useState, useEffect } from 'react';
-import { Card, Form, Button, Alert } from 'react-bootstrap';
-import { toast } from 'react-toastify';
 import { apiFetch } from '../apiService';
+import { toast } from 'react-toastify';
 
-const HORARIOS = [
-  "07:00 a 07:40", "07:40 a 08:20", "08:20 a 09:00", "09:00 a 09:40",
-  "09:40 a 10:20", "10:20 a 11:00", "11:00 a 11:40", "11:40 a 12:20",
-  "12:20 a 13:00", "13:00 a 13:40", "13:40 a 14:20", "14:20 a 15:00",
-  "15:00 a 15:40", "15:40 a 16:20", "16:20 a 17:00", "17:00 a 17:40",
-  "17:40 a 18:20", "18:20 a 19:00", "19:00 a 19:40"
-];
+const HORAS = ["12:20", "13:00", "13:40"]; // Horarios típicos de almuerzo
 
-const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+function GestionPreferencias() {
+    const [slots, setSlots] = useState([]);
 
-function GestionPreferencias({ refreshKey }) {
-  const [almuerzoSlots, setAlmuerzoSlots] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+    useEffect(() => {
+        apiFetch('/api/config/preferencias').then(d => setSlots(d.almuerzo_slots || []));
+    }, []);
 
-  // Cargar preferencias al iniciar
-  useEffect(() => {
-    cargarPreferencias();
-  }, [refreshKey]);
+    const toggle = (h) => {
+        const nuevos = slots.includes(h) ? slots.filter(x => x !== h) : [...slots, h];
+        setSlots(nuevos);
+    };
 
-  async function cargarPreferencias() {
-    try {
-      const data = await apiFetch('/api/config/preferencias');
-      if (data.almuerzo_slots) {
-        setAlmuerzoSlots(data.almuerzo_slots);
-      }
-    } catch (error) {
-      console.error("Error cargando preferencias:", error);
-    }
-  }
+    const guardar = async () => {
+        await apiFetch('/api/config/preferencias', { method: 'POST', body: JSON.stringify({ almuerzo_slots: slots }) });
+        toast.success("Preferencias guardadas");
+    };
 
-  const toggleSlot = (dia, hora) => {
-    const slotId = `${dia}-${hora}`; // Formato: "Lunes-12:20 a 13:00"
-    if (almuerzoSlots.includes(slotId)) {
-      setAlmuerzoSlots(almuerzoSlots.filter(s => s !== slotId));
-    } else {
-      setAlmuerzoSlots([...almuerzoSlots, slotId]);
-    }
-  };
-
-  const guardarCambios = async () => {
-    setIsLoading(true);
-    try {
-      await apiFetch('/api/config/preferencias', {
-        method: 'POST',
-        body: JSON.stringify({ almuerzo_slots: almuerzoSlots })
-      });
-      toast.success("Horarios de almuerzo actualizados. El generador intentará evitarlos.");
-    } catch (error) {
-      toast.error("Error al guardar preferencias.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Card className="shadow-sm">
-      <Card.Header className="bg-warning text-dark fw-bold">
-        🍽️ Gestión de Almuerzos (Franjas a Evitar)
-      </Card.Header>
-      <Card.Body>
-        <p className="text-muted small">
-          Selecciona los casilleros que corresponden al recreo o almuerzo general. 
-          El algoritmo intentará NO asignar clases en estos horarios.
-        </p>
-        
-        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-            <table className="table table-bordered table-sm text-center" style={{ fontSize: '0.8rem' }}>
-            <thead className="table-light sticky-top">
-                <tr>
-                <th>Hora / Día</th>
-                {DIAS.map(d => <th key={d}>{d}</th>)}
-                </tr>
-            </thead>
-            <tbody>
-                {HORARIOS.map(hora => (
-                <tr key={hora}>
-                    <td className="fw-bold bg-light">{hora}</td>
-                    {DIAS.map(dia => {
-                    const isActive = almuerzoSlots.includes(`${dia}-${hora}`);
-                    return (
-                        <td 
-                        key={`${dia}-${hora}`} 
-                        className={isActive ? "bg-danger" : ""}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => toggleSlot(dia, hora)}
-                        >
-                        {isActive ? "ALMUERZO" : "-"}
-                        </td>
-                    );
-                    })}
-                </tr>
+    return (
+        <div>
+            <p className="text-muted small">Selecciona los horarios donde PREFIERES que no haya clases (Almuerzo).</p>
+            <div className="d-flex gap-2 mb-3">
+                {HORAS.map(h => (
+                    <button key={h} className={`btn btn-sm ${slots.includes(h) ? 'btn-danger' : 'btn-outline-secondary'}`} onClick={() => toggle(h)}>
+                        {h} {slots.includes(h) ? '(Bloqueado)' : ''}
+                    </button>
                 ))}
-            </tbody>
-            </table>
+            </div>
+            <button className="btn-teal btn-sm" onClick={guardar}>Guardar Configuración</button>
         </div>
-
-        <div className="d-grid mt-3">
-            <Button variant="primary" onClick={guardarCambios} disabled={isLoading}>
-                {isLoading ? "Guardando..." : "Guardar Configuración de Almuerzos"}
-            </Button>
-        </div>
-      </Card.Body>
-    </Card>
-  );
+    );
 }
-
 export default GestionPreferencias;

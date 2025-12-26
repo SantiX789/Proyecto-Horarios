@@ -1,107 +1,85 @@
-// FrontEnd/src/components/CambiarPassword.jsx
-import { useState } from 'react';
-import { Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
+import React, { useState } from 'react';
 import { apiFetch } from '../apiService';
+import { toast } from 'react-toastify';
 
 function CambiarPassword() {
   const [currentPass, setCurrentPass] = useState("");
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  
+  // Un solo estado para destapar los 3 campos a la vez
+  const [mostrarTodo, setMostrarTodo] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (newPass.length < 4) {
-      toast.warn("La nueva contraseña debe tener al menos 4 caracteres.");
-      return;
-    }
-    if (newPass !== confirmPass) {
-      toast.warn("Las contraseñas nuevas no coinciden.");
-      return;
-    }
+    if (newPass !== confirmPass) return toast.warning("Las contraseñas nuevas no coinciden");
+    if (newPass.length < 4) return toast.warning("La contraseña es muy corta");
 
-    setIsLoading(true);
+    setLoading(true);
     try {
-      // Llamamos al nuevo endpoint de Fase 2
-      await apiFetch('/api/auth/change-password', {
-        method: 'POST',
-        body: JSON.stringify({
-          current_password: currentPass,
-          new_password: newPass
-        })
-      });
-
-      toast.success("¡Contraseña actualizada! Por favor ingresa nuevamente.");
-      
-      // Limpiamos sesión para obligar a reloguear limpio
-      localStorage.clear();
-      navigate('/'); // Volver al login
-
+        await apiFetch('/api/auth/change-password', {
+            method: 'POST',
+            body: JSON.stringify({ current_password: currentPass, new_password: newPass })
+        });
+        toast.success("🔐 ¡Contraseña actualizada!");
+        setCurrentPass(""); setNewPass(""); setConfirmPass("");
     } catch (error) {
-      toast.error(error.message || "Error al cambiar contraseña.");
+        toast.error(error.message || "Error al cambiar contraseña");
     } finally {
-      setIsLoading(false);
+        setLoading(false);
     }
   };
 
   return (
-    <div className="d-flex justify-content-center align-items-center vh-100 bg-light">
-      <Card className="shadow p-4" style={{ width: '400px' }}>
-        <Card.Body>
-          <div className="text-center mb-4">
-            <h3>🔐 Seguridad</h3>
-            <p className="text-muted">Es tu primer ingreso o tu clave ha expirado. Debes cambiarla para continuar.</p>
-          </div>
-          
-          <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3">
-              <Form.Label>Contraseña Actual</Form.Label>
-              <Form.Control 
-                type="password" 
-                placeholder="Ej: 1234"
-                value={currentPass}
-                onChange={(e) => setCurrentPass(e.target.value)}
-                required 
-              />
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label>Nueva Contraseña</Form.Label>
-              <Form.Control 
-                type="password" 
-                placeholder="Mínimo 4 caracteres"
-                value={newPass}
-                onChange={(e) => setNewPass(e.target.value)}
-                required 
-              />
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label>Confirmar Nueva</Form.Label>
-              <Form.Control 
-                type="password" 
-                placeholder="Repite la nueva contraseña"
-                value={confirmPass}
-                onChange={(e) => setConfirmPass(e.target.value)}
-                required 
-              />
-            </Form.Group>
-
-            <div className="d-grid gap-2">
-              <Button variant="primary" type="submit" disabled={isLoading}>
-                {isLoading ? <Spinner size="sm" animation="border"/> : "Actualizar Contraseña"}
-              </Button>
-              <Button variant="link" className="text-muted" onClick={() => { localStorage.clear(); navigate('/'); }}>
-                Cancelar / Salir
-              </Button>
+    <div className="card-custom border shadow-sm p-4 mx-auto" style={{maxWidth: '500px'}}>
+        <div className="text-center mb-4">
+            <div className="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-2" style={{width: '60px', height: '60px'}}>
+                <i className="fa-solid fa-lock fa-xl text-teal"></i>
             </div>
-          </Form>
-        </Card.Body>
-      </Card>
+            <h5 className="fw-bold text-dark">Seguridad de la Cuenta</h5>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+            {/* BOTÓN TOGGLE GLOBAL */}
+            <div className="d-flex justify-content-end mb-2">
+                <button type="button" className="btn btn-sm btn-link text-decoration-none text-muted" onClick={() => setMostrarTodo(!mostrarTodo)}>
+                    <i className={`fa-solid ${mostrarTodo ? 'fa-eye-slash' : 'fa-eye'} me-1`}></i> 
+                    {mostrarTodo ? 'Ocultar' : 'Mostrar'} caracteres
+                </button>
+            </div>
+
+            <div className="mb-3">
+                <label className="form-label small fw-bold text-muted">Contraseña Actual</label>
+                <input 
+                    type={mostrarTodo ? "text" : "password"} 
+                    className="form-control" 
+                    value={currentPass} onChange={e => setCurrentPass(e.target.value)} required 
+                />
+            </div>
+            
+            <div className="mb-3">
+                <label className="form-label small fw-bold text-muted">Nueva Contraseña</label>
+                <input 
+                    type={mostrarTodo ? "text" : "password"} 
+                    className="form-control" 
+                    value={newPass} onChange={e => setNewPass(e.target.value)} required 
+                />
+            </div>
+
+            <div className="mb-4">
+                <label className="form-label small fw-bold text-muted">Confirmar Nueva</label>
+                <input 
+                    type={mostrarTodo ? "text" : "password"} 
+                    className="form-control" 
+                    value={confirmPass} onChange={e => setConfirmPass(e.target.value)} required 
+                />
+            </div>
+
+            <button type="submit" className="btn w-100 text-white fw-bold shadow-sm" style={{backgroundColor: '#0d9488'}} disabled={loading}>
+                {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : "ACTUALIZAR CONTRASEÑA"}
+            </button>
+        </form>
     </div>
   );
 }

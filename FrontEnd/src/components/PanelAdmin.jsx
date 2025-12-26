@@ -1,216 +1,227 @@
-// FrontEnd/src/components/PanelAdmin.jsx
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { apiFetch } from '../apiService';
+import React, { useState, useEffect } from 'react';
+import { useTheme } from '../context/ThemeContext';
+import { Sun, Moon } from 'lucide-react';
+import { apiFetch } from '../apiService'; 
 
-// Importamos tus componentes (asegúrate de que las rutas estén bien)
 import GestionProfesores from './GestionProfesores';
 import GestionMaterias from './GestionMaterias';
 import GestionCursos from './GestionCursos';
 import GestionAulas from './GestionAulas';
 import GestionRequisitos from './GestionRequisitos';
 import GeneradorHorario from './GeneradorHorario';
-import TablaHorario from './TablaHorario';
-import GestionPreferencias from './GestionPreferencias';
-import ReporteCargaHoraria from './ReporteCargaHoraria';
-import Configuracion from './Configuracion';
-import BuscadorSuplentes from './BuscadorSuplentes';
+import GrillaHorarios from './GrillaHorarios';
+import Herramientas from './Herramientas';
+import Dashboard from './Dashboard'; // <--- Importamos el Dashboard
 
-function PanelAdmin() {
-  // Estado para la navegación principal (Datos, Generador, Grilla)
-  const [activeView, setActiveView] = useState('datos'); 
-  // Estado para el Stepper dentro de Datos Maestros
-  const [activeStep, setActiveStep] = useState(1);
+function PanelAdmin({ onLogout }) {
+  const { theme, toggleTheme } = useTheme();
+
+  // "inicio" será la pestaña por defecto
+  const [activeTab, setActiveTab] = useState('inicio');
+  const [subTab, setSubTab] = useState('profesores');
   
-  const [refreshKey, setRefreshKey] = useState(0); 
-  const [horariosPublicados, setHorariosPublicados] = useState(false); 
-  const navigate = useNavigate();
+  // Estado para el resumen (contadores) y recarga
+  const [resumen, setResumen] = useState({ profesores: 0, materias: 0, cursos: 0, aulas: 0 });
+  const [refreshGrilla, setRefreshGrilla] = useState(0);
 
-  useEffect(() => {
-    async function checkStatus() {
-      try {
-        const data = await apiFetch('/api/config/publicacion-status');
-        setHorariosPublicados(data.publicado);
-      } catch (error) {
-        console.error(error);
-      }
-    }
-    checkStatus();
+  // --- ESTADO PARA LA IDENTIDAD DEL COLEGIO ---
+  const [institucion, setInstitucion] = useState({ nombre: "Cronos", logo: null });
+
+  // Cargar resumen e identidad al iniciar
+  useEffect(() => { 
+      cargarResumen(); 
+      cargarIdentidad(); 
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('proyecto_horarios_token');
-    localStorage.removeItem('user_role');
-    window.location.href = '/'; 
+  // Función para cargar contadores
+  const cargarResumen = async () => {
+    try {
+      const p = await apiFetch('/api/profesores');
+      const m = await apiFetch('/api/materias');
+      const c = await apiFetch('/api/cursos');
+      const a = await apiFetch('/api/aulas');
+      setResumen({ profesores: p.length, materias: m.length, cursos: c.length, aulas: a.length });
+    } catch (error) { console.error("Error cargando resumen:", error); }
   };
 
-  const handleDatosCambiados = () => {
-    setRefreshKey(old => old + 1);
+  // Función para cargar Logo y Nombre
+  const cargarIdentidad = async () => {
+    try {
+        const data = await apiFetch('/api/config/institucion');
+        if (data) {
+            setInstitucion({
+                nombre: data.nombre || "Cronos",
+                logo: data.logo_base64 || null
+            });
+        }
+    } catch (error) { console.error("Error cargando identidad:", error); }
+  };
+
+  const renderStepCard = (id, number, label, count) => {
+    const isActive = subTab === id;
+    return (
+      <div className="col-md-3 col-6">
+        <div 
+            onClick={() => setSubTab(id)}
+            className="p-3 border rounded-3 shadow-sm h-100 position-relative"
+            style={{ 
+                cursor: 'pointer',
+                backgroundColor: isActive ? 'var(--primary-light, #f0fdfa)' : 'var(--card-bg, white)', 
+                borderColor: isActive ? 'var(--primary, #0d9488)' : 'var(--border, #dee2e6)',
+                borderWidth: isActive ? '2px' : '1px',
+                transition: 'all 0.2s'
+            }}
+        >
+            <div className="d-flex justify-content-between">
+                <div className="small fw-bold mb-1" style={{color: isActive ? 'var(--primary, #0d9488)' : 'var(--text-muted, #94a3b8)'}}>
+                    {number}
+                </div>
+                <span className="badge rounded-pill bg-light text-dark border">{count}</span>
+            </div>
+            
+            <div className="fw-bold" style={{ color: 'var(--text-main, #212529)' }}>
+                {label}
+            </div>
+            {isActive && (
+                <div style={{
+                    position: 'absolute', bottom: 0, left: 0, width: '100%', 
+                    height: '4px', backgroundColor: 'var(--primary, #0d9488)', 
+                    borderBottomLeftRadius: '4px', borderBottomRightRadius: '4px'
+                }}></div>
+            )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderContent = () => {
+    switch (activeTab) {
+      // --- 1. CASO INICIO (DASHBOARD) ---
+      case 'inicio':
+        return <Dashboard />;
+
+      // --- 2. CASO DATOS MAESTROS ---
+      case 'datos':
+        return (
+          <div>
+            {/* Sub-navegación interna de Datos Maestros */}
+            <div className="row g-3 mb-4">
+                {renderStepCard('profesores', '01', 'Profesores', resumen.profesores)}
+                {renderStepCard('cursos', '02', 'Cursos', resumen.cursos)}
+                {renderStepCard('materias', '03', 'Mat. & Aulas', resumen.materias)}
+                {renderStepCard('requisitos', '04', 'Relaciones', '-')}
+            </div>
+
+            <div className="animate-fade-in">
+                {subTab === 'profesores' && <GestionProfesores onDatosCambiados={cargarResumen} />}
+                {subTab === 'cursos' && <GestionCursos onDatosCambiados={cargarResumen} />}
+                {subTab === 'materias' && (
+                    <div className="row">
+                        <div className="col-md-6"><GestionMaterias onDatosCambiados={cargarResumen} /></div>
+                        <div className="col-md-6"><GestionAulas onDatosCambiados={cargarResumen} /></div> 
+                    </div>
+                )}
+                {subTab === 'requisitos' && <GestionRequisitos onDatosCambiados={cargarResumen} />}
+            </div>
+          </div>
+        );
+
+      case 'asignacion':
+        return <GeneradorHorario onSuccess={() => setRefreshGrilla(prev => prev + 1)} />;
+
+      case 'grilla':
+        return <GrillaHorarios refreshKey={refreshGrilla} />;
+
+      case 'herramientas':
+        return <Herramientas />; 
+
+      default:
+        return <div>Selecciona una opción</div>;
+    }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      
-      {/* --- 1. NAVBAR SUPERIOR (DISEÑO TEAL) --- */}
-      <nav className="navbar-custom">
-        <div className="logo">
-          <i className="fa-solid fa-shapes"></i> Cronos
-        </div>
-        
-        <div className="nav-links">
-          <button 
-            className={`nav-btn ${activeView === 'datos' ? 'active' : ''}`} 
-            onClick={() => setActiveView('datos')}
-          >
-            <i className="fa-solid fa-database"></i> Datos Maestros
-          </button>
+    <div className="min-vh-100 d-flex flex-column">
+      {/* Navbar Principal */}
+      <nav className="navbar navbar-expand-lg border-bottom shadow-sm px-4 py-3 navbar-custom">
+        <div className="container-fluid">
           
-          <button 
-            className={`nav-btn ${activeView === 'generador' ? 'active' : ''}`} 
-            onClick={() => setActiveView('generador')}
-          >
-            <i className="fa-solid fa-wand-magic-sparkles"></i> Asignación
-          </button>
+          {/* BRAND CON LOGO DINÁMICO */}
+          <span className="navbar-brand fw-bold d-flex align-items-center gap-2 fs-4 logo">
+            {institucion.logo ? (
+                <img 
+                    src={institucion.logo} 
+                    alt="Logo" 
+                    style={{height: '40px', width: 'auto', objectFit: 'contain'}} 
+                />
+            ) : (
+                <i className="fa-solid fa-shapes"></i>
+            )}
+            <span className="d-none d-sm-inline text-truncate" style={{maxWidth: '300px'}}>
+                {institucion.nombre}
+            </span>
+          </span>
           
-          <button 
-            className={`nav-btn ${activeView === 'horarios' ? 'active' : ''}`} 
-            onClick={() => setActiveView('horarios')}
-          >
-            <i className="fa-regular fa-calendar-days"></i> Grilla Final
-          </button>
+          {/* MENÚ DE NAVEGACIÓN (PILLS) */}
+          <div className="d-flex gap-2 p-1 rounded-pill border nav-links-container" style={{background: 'var(--bg-body)'}}>
+             {['inicio', 'datos', 'asignacion', 'grilla', 'herramientas'].map(tab => {
+                const labels = {
+                    inicio: 'Inicio',
+                    datos: 'Datos Maestros',
+                    asignacion: 'Asignación',
+                    grilla: 'Grilla Final',
+                    herramientas: 'Herramientas'
+                };
+                const icons = {
+                    inicio: 'fa-house',
+                    datos: 'fa-database',
+                    asignacion: 'fa-wand-magic-sparkles',
+                    grilla: 'fa-calendar-days',
+                    herramientas: 'fa-toolbox'
+                };
+                return (
+                    <button 
+                        key={tab}
+                        className={`btn btn-sm rounded-pill px-3 fw-bold ${activeTab === tab ? 'shadow-sm' : ''}`}
+                        style={{ 
+                            border: 'none',
+                            backgroundColor: activeTab === tab ? 'var(--card-bg)' : 'transparent',
+                            color: activeTab === tab ? 'var(--primary)' : 'var(--text-muted)'
+                        }}
+                        onClick={() => setActiveTab(tab)}
+                    >
+                        <i className={`fa-solid ${icons[tab]} me-2`}></i> {labels[tab]}
+                    </button>
+                );
+             })}
+          </div>
 
-           <button 
-            className={`nav-btn ${activeView === 'herramientas' ? 'active' : ''}`} 
-            onClick={() => setActiveView('herramientas')}
-          >
-            <i className="fa-solid fa-toolbox"></i> Herramientas
-          </button>
-        </div>
+          {/* CONTROLES DERECHA */}
+          <div className="d-flex align-items-center gap-3">
+              <button 
+                onClick={toggleTheme} 
+                className="btn btn-sm border rounded-circle d-flex align-items-center justify-content-center shadow-sm" 
+                title={theme === 'light' ? "Activar Modo Oscuro" : "Activar Modo Claro"}
+                style={{ 
+                    width: '38px', height: '38px', 
+                    backgroundColor: 'var(--card-bg)', color: 'var(--text-main)', borderColor: 'var(--border)'
+                }}
+              >
+                {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+              </button>
 
-        <div className="user-pill" onClick={handleLogout}>
-          <span>Admin</span>
-          <i className="fa-solid fa-right-from-bracket" style={{ color: 'var(--danger)' }}></i>
+              <button className="btn btn-outline-danger btn-sm rounded-pill px-3 fw-bold" onClick={onLogout}>
+                Admin <i className="fa-solid fa-right-from-bracket ms-2"></i>
+              </button>
+          </div>
         </div>
       </nav>
 
-
-      {/* --- 2. CONTENEDOR PRINCIPAL --- */}
-      <main className="main-container">
-        
-        {/* VISTA 1: DATOS MAESTROS (Con Stepper) */}
-        {activeView === 'datos' && (
-          <section>
-            <div className="header-section">
-              <div>
-                <h1 className="page-title">Configuración Académica</h1>
-                <p className="page-desc">Carga la estructura de la escuela paso a paso.</p>
-              </div>
-              <button className="btn-teal btn-sm" onClick={handleDatosCambiados}>
-                <i className="fa-solid fa-arrows-rotate"></i> Refrescar
-              </button>
-            </div>
-
-            {/* STEPPER HORIZONTAL */}
-            <div className="stepper-row">
-              <div className={`step-card ${activeStep === 1 ? 'active' : ''}`} onClick={() => setActiveStep(1)}>
-                <span className="step-num">01</span><span className="step-title">Profesores</span>
-              </div>
-              <div className={`step-card ${activeStep === 2 ? 'active' : ''}`} onClick={() => setActiveStep(2)}>
-                <span className="step-num">02</span><span className="step-title">Cursos</span>
-              </div>
-              <div className={`step-card ${activeStep === 3 ? 'active' : ''}`} onClick={() => setActiveStep(3)}>
-                <span className="step-num">03</span><span className="step-title">Mat. & Aulas</span>
-              </div>
-              <div className={`step-card ${activeStep === 4 ? 'active' : ''}`} onClick={() => setActiveStep(4)}>
-                <span className="step-num">04</span><span className="step-title">Relaciones</span>
-              </div>
-            </div>
-
-            {/* CONTENIDO DE LOS PASOS */}
-            <div>
-                {activeStep === 1 && <GestionProfesores refreshKey={refreshKey} onDatosCambiados={handleDatosCambiados} />}
-                {activeStep === 2 && <GestionCursos refreshKey={refreshKey} onDatosCambiados={handleDatosCambiados} />}
-                {activeStep === 3 && (
-                    <div className="row">
-                        <div className="col-md-6"><GestionMaterias refreshKey={refreshKey} onDatosCambiados={handleDatosCambiados} /></div>
-                        <div className="col-md-6"><GestionAulas refreshKey={refreshKey} onDatosCambiados={handleDatosCambiados} /></div>
-                    </div>
-                )}
-                {activeStep === 4 && <GestionRequisitos refreshKey={refreshKey} onDatosCambiados={handleDatosCambiados} />}
-            </div>
-          </section>
-        )}
-
-
-        {/* VISTA 2: GENERADOR */}
-        {activeView === 'generador' && (
-           <section>
-              <div className="header-section">
-                <div>
-                   <h1 className="page-title">Motor de Asignación</h1>
-                   <p className="page-desc">Algoritmo inteligente de generación de horarios.</p>
-                </div>
-              </div>
-              <GeneradorHorario refreshKey={refreshKey} onDatosCambiados={handleDatosCambiados} />
-           </section>
-        )}
-
-
-        {/* VISTA 3: GRILLA FINAL */}
-        {activeView === 'horarios' && (
-           <section>
-              <div className="header-section">
-                <div>
-                   <h1 className="page-title">Grilla de Horarios</h1>
-                   <p className="page-desc">Visualiza, exporta y comparte los resultados.</p>
-                </div>
-                
-                {/* --- AQUÍ ESTÁ EL NUEVO BOTÓN --- */}
-                <button className="btn-teal btn-sm" onClick={handleDatosCambiados}>
-                   <i className="fa-solid fa-arrows-rotate"></i> Actualizar Tabla
-                </button>
-              </div>
-              
-              {/* Le pasamos refreshKey para que reaccione al botón */}
-              <TablaHorario refreshKey={refreshKey} onDatosCambiados={handleDatosCambiados} userRole="admin"/>
-           </section>
-        )}
-
-        {/* VISTA 4: HERRAMIENTAS */}
-        {activeView === 'herramientas' && (
-           <section>
-              <div className="header-section">
-                <div>
-                   <h1 className="page-title">Herramientas & Configuración</h1>
-                   <p className="page-desc">Utilidades extra y mantenimiento del sistema.</p>
-                </div>
-              </div>
-              
-              <div className="d-flex flex-column gap-4">
-                 <div className="card-custom">
-                    <h5 className="mb-3 text-secondary">🔎 Buscador de Suplentes</h5>
-                    <BuscadorSuplentes />
-                 </div>
-                 
-                 <div className="card-custom">
-                    <h5 className="mb-3 text-secondary">⚙️ Mantenimiento</h5>
-                    <Configuracion />
-                 </div>
-
-                 <div className="card-custom">
-                    <h5 className="mb-3 text-secondary">🍽️ Preferencias</h5>
-                    <GestionPreferencias refreshKey={refreshKey} />
-                 </div>
-
-                 <div className="card-custom">
-                    <h5 className="mb-3 text-secondary">📊 Reportes</h5>
-                    <ReporteCargaHoraria refreshKey={refreshKey} />
-                 </div>
-              </div>
-           </section>
-        )}
-
+      {/* Contenido Principal */}
+      <main className="flex-grow-1 p-4" style={{ backgroundColor: 'var(--bg-body)' }}>
+        <div className="container-fluid" style={{maxWidth: '1400px'}}>
+            {renderContent()}
+        </div>
       </main>
     </div>
   );

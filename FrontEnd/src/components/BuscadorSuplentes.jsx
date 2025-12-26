@@ -1,4 +1,3 @@
-// FrontEnd/src/components/BuscadorSuplentes.jsx
 import { useState } from 'react';
 import { Card, Form, Button, ListGroup, Badge, Spinner } from 'react-bootstrap';
 import { toast } from 'react-toastify';
@@ -39,62 +38,70 @@ function BuscadorSuplentes() {
   };
 
   return (
-    <div className="mt-3 container" style={{ maxWidth: '600px' }}>
-      <Card className="shadow-sm border-primary">
-        <Card.Header className="bg-primary text-white fw-bold">
-            🕵️‍♂️ Buscador de Suplentes
-        </Card.Header>
-        <Card.Body>
-          <p className="text-muted small">
-            Encuentra profesores que tienen disponibilidad y no están dando clase en el horario seleccionado.
-          </p>
-          
-          <Form onSubmit={handleBuscar} className="d-flex gap-2 align-items-end">
-            <Form.Group className="flex-grow-1">
-                <Form.Label fw-bold>Día</Form.Label>
-                <Form.Select value={dia} onChange={(e) => setDia(e.target.value)}>
+    <div className="mt-2 container" style={{ maxWidth: '100%' }}>
+      {/* Quitamos la Card de Bootstrap para que se integre mejor en tu Dashboard */}
+      <div className="bg-white">
+          <Form onSubmit={handleBuscar} className="row g-3 align-items-end">
+            
+            <div className="col-md-5">
+                {/* CORRECCIÓN AQUÍ: className en lugar de atributo suelto */}
+                <Form.Label className="fw-bold text-secondary small text-uppercase">Día</Form.Label>
+                <Form.Select className="form-select" value={dia} onChange={(e) => setDia(e.target.value)}>
                     {DIAS.map(d => <option key={d} value={d}>{d}</option>)}
                 </Form.Select>
-            </Form.Group>
+            </div>
 
-            <Form.Group className="flex-grow-1">
-                <Form.Label fw-bold>Hora de Inicio</Form.Label>
-                <Form.Select value={hora} onChange={(e) => setHora(e.target.value)}>
+            <div className="col-md-5">
+                {/* CORRECCIÓN AQUÍ TAMBIÉN */}
+                <Form.Label className="fw-bold text-secondary small text-uppercase">Hora de Inicio</Form.Label>
+                <Form.Select className="form-select" value={hora} onChange={(e) => setHora(e.target.value)}>
                     {HORAS_INICIO.map(h => <option key={h} value={h}>{h}</option>)}
                 </Form.Select>
-            </Form.Group>
+            </div>
 
-            <Button variant="primary" type="submit" disabled={isLoading} style={{ minWidth: '100px' }}>
-                {isLoading ? <Spinner size="sm"/> : '🔍 Buscar'}
-            </Button>
+            <div className="col-md-2">
+                {/* Usamos tu clase btn-teal para consistencia visual */}
+                <button 
+                    className="btn btn-teal w-100" 
+                    type="submit" 
+                    disabled={isLoading}
+                >
+                    {isLoading ? <Spinner animation="border" size="sm"/> : <span><i className="fa-solid fa-magnifying-glass me-2"></i>Buscar</span>}
+                </button>
+            </div>
           </Form>
 
-          <hr />
-
           {busquedaRealizada && (
-            <div>
-                <h6 className="text-secondary mb-3">
-                    Resultados para <strong>{dia} {hora}hs</strong>:
+            <div className="mt-4 animate-fade-in">
+                <h6 className="text-secondary mb-3 fw-bold small text-uppercase">
+                    <i className="fa-solid fa-list-check me-2"></i>Resultados para {dia} {hora}hs
                 </h6>
                 
                 {resultados.length > 0 ? (
-                    <ListGroup>
+                    <ListGroup variant="flush" className="border rounded">
                         {resultados.map(p => (
-                            <ListGroup.Item key={p.id} className="d-flex justify-content-between align-items-center">
-                                <span className="fw-bold">👤 {p.nombre}</span>
-                                <Badge bg="success" pill>Disponible</Badge>
+                            <ListGroup.Item key={p.id} className="d-flex justify-content-between align-items-center p-3">
+                                <div>
+                                    <span className="fw-bold text-dark d-block">{p.nombre}</span>
+                                    <span className="small text-muted">Legajo/DNI: {p.dni || '-'}</span>
+                                </div>
+                                <Badge bg="success" className="px-3 py-2 rounded-pill">
+                                    <i className="fa-solid fa-check me-1"></i> Disponible
+                                </Badge>
                             </ListGroup.Item>
                         ))}
                     </ListGroup>
                 ) : (
-                    <div className="alert alert-warning text-center">
-                        😔 Nadie disponible en este horario.
+                    <div className="alert alert-warning border-0 d-flex align-items-center" role="alert">
+                        <i className="fa-solid fa-triangle-exclamation me-2 fa-lg"></i>
+                        <div>
+                            <strong>Sin resultados.</strong> No hay profesores disponibles en este horario.
+                        </div>
                     </div>
                 )}
             </div>
           )}
-        </Card.Body>
-      </Card>
+      </div>
     </div>
   );
 }

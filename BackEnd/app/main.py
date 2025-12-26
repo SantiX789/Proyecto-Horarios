@@ -1,54 +1,99 @@
-# BackEnd/app/main.py (FASE 3 - ALGORITMO INTELIGENTE)
+# BackEnd/app/main.py
 
 import json
 import uuid
-from fastapi import FastAPI, Response, Depends, HTTPException, status
-from fastapi import BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import logging
 from typing import List, Dict, Optional, Set
-import openpyxl
 from io import BytesIO
+
+from fastapi import FastAPI, Response, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import app.seguridad as seguridad
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+import openpyxl
+import openpyxl.styles
+
+# Importaciones locales
+import app.seguridad as seguridad
 from app.database import (
-    SessionLocal, engine, Base, get_db, crear_tablas,
+    engine, get_db, crear_tablas,
     ProfesorDB, MateriaDB, CursoDB, AulaDB, RequisitoDB, AsignacionDB, UsuarioDB,
     ConfiguracionDB
 )
 
+# --- Configuración de Logs ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # --- Configuración Inicial ---
+crear_tablas() # Esto creará 'horarios.db' según tu código
 app = FastAPI()
-crear_tablas() 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
+
+# ==========================================
+# 1. CORS
+# ==========================================
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Modelos Pydantic ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
+
+# --- CONSTANTES ---
+HORARIOS_ORDENADOS = [
+  "07:40", "08:20", "09:00", "09:40", "10:20", "11:00", "11:40", "12:20",
+  "13:00", "13:40", "14:20", "15:00", "15:40", "16:20", "17:00",
+  "17:40", "18:20", "19:00", "19:40", "20:20", "21:00", "21:40", "22:20"
+]
+DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
+
+# ==========================================
+# 2. MODELOS PYDANTIC
+# ==========================================
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "admin" # El frontend manda 'role', nosotros lo guardaremos en 'rol'
+
+class UsuarioRegistro(BaseModel):
+    username: str
+    password: str
+
+class PasswordChange(BaseModel):
+    current_password: str  # <--- CAMBIAMOS A 'current_password'
+    new_password: str
+
+class Usuario(BaseModel):
+    username: str
+
+class RequisitoCreate(BaseModel):
+    curso_id: str
+    materia_id: str
+    profesor_id: str
+    aula_preferida_id: Optional[str] = None
+    horas_semanales: int
+
+# Busca esta clase y déjala así:
 class Profesor(BaseModel):
     id: Optional[str] = None
     nombre: str
+    dni: Optional[str] = None  # <--- FALTABA ESTA LÍNEA
     disponibilidad: List[str]
-
-class ReporteCargaHoraria(BaseModel):
-    nombre_profesor: str
-    horas_asignadas: int
+    color: Optional[str] = "#0d9488"
 
 class Aula(BaseModel):
     id: Optional[str] = None
-    nombre: str
-    tipo: Optional[str] = "Normal"
-    capacidad: int = 30 
-
-class AulaUpdate(BaseModel):
     nombre: str
     tipo: Optional[str] = "Normal"
     capacidad: int = 30
@@ -56,73 +101,57 @@ class AulaUpdate(BaseModel):
 class Materia(BaseModel):
     id: Optional[str] = None
     nombre: str
+    color_hex: Optional[str] = "#0d9488"
 
 class Curso(BaseModel):
     id: Optional[str] = None
     anio: str
     division: str
     cantidad_alumnos: int = 30
-    nombre_display: Optional[str] = None 
-
-class Requisito(BaseModel):
-    id: Optional[str] = None
-    curso_id: str
-    materia_id: str
-    horas_semanales: int
-    tipo_aula_requerida: Optional[str] = "Normal"
-
-class Usuario(BaseModel):
-    username: str
-
-class UsuarioEnDB(Usuario):
-    hashed_password: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    must_change_password: bool = False
-    rol: str = "admin"
-
-class UsuarioRegistro(BaseModel):
-    username: str
-    password: str
-
-class PasswordChangeRequest(BaseModel):
-    current_password: str
-    new_password: str
-
-class AsignacionSolver(BaseModel):
-    requisito_id: str
-    profesor_id: str
-
-class SolverRequest(BaseModel):
-    curso_id: str
-    asignaciones: List[AsignacionSolver]
-
-class AsignacionUpdate(BaseModel):
-    dia: str
-    hora_rango: str
-
-class CursoUpdate(BaseModel):
-    anio: str
-    division: str
-    cantidad_alumnos: int
-
-class MateriaUpdate(BaseModel):
-    nombre: str
-
-class ProfesorUpdate(BaseModel):
-    nombre: str
-    disponibilidad: List[str]
+    nombre_display: Optional[str] = None
 
 class Preferencias(BaseModel):
      almuerzo_slots: List[str] = []
 
 class BusquedaSuplente(BaseModel):
     dia: str
-    hora_inicio: str # Ej: "07:00"     
+    hora_inicio: str
 
-# --- Funciones Auxiliares ---
+class ReporteCargaHoraria(BaseModel):
+    nombre_profesor: str
+    horas_asignadas: int
+    color: Optional[str] = "#0d9488" # <--- NUEVO
+
+class MovimientoHorario(BaseModel):
+    asignacion_id: str
+    nuevo_dia: str
+    nueva_hora: str
+
+# ==========================================
+# 3. SEGURIDAD Y DEPENDENCIAS
+# ==========================================
+
+def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    payload = seguridad.verificar_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return {
+        "username": payload.get("sub"),
+        # Tu DB usa 'rol', pero el token puede tener 'role'. Normalizamos.
+        "rol": payload.get("role", "admin"), 
+        "force_change_password": payload.get("force_change_password", False)
+    }
+
+def get_current_admin_user(current_user: dict = Depends(get_current_user)):
+    # Verificamos 'rol' (tu nombre de columna)
+    if current_user["rol"] != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere rol admin")
+    return current_user
+
 def calcular_hora_rango(hora_inicio: str) -> Optional[str]:
     try:
         minutos = int(hora_inicio[3:])
@@ -133,431 +162,302 @@ def calcular_hora_rango(hora_inicio: str) -> Optional[str]:
     except Exception:
         return None
 
-# --- Dependencias de Autenticación ---
-def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
-    payload = seguridad.verificar_token(token)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido o expirado",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return {
-        "username": payload.get("sub"), 
-        "rol": payload.get("rol", "admin"),
-        "force_change_password": payload.get("force_change_password", False)
-    }
-
-def get_current_admin_user(current_user: dict = Depends(get_current_user)):
-    if current_user["rol"] != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requiere rol admin")
-    return current_user
-
 def estan_horarios_publicados(db: Session) -> bool:
     config = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "horarios_publicados").first()
-    if not config: return False 
+    if not config: return False
     return config.value_json == "true"
 
-# --- LÓGICA DEL SOLVER INTELIGENTE (FASE 3) ---
 
-def _is_prof_and_curso_available(dia: str, hora_rango: str, profesor_id: str, curso_id: str, horario_ocupado: dict) -> bool:
-    asignaciones_en_slot = horario_ocupado.get((dia, hora_rango), [])
-    for ocupacion in asignaciones_en_slot:
-        if ocupacion["curso_id"] == curso_id: return False # Curso ya tiene clase a esa hora
-        if ocupacion["profesor_id"] == profesor_id: return False # Profe ocupado
-    return True
+# ==========================================
+# 4. ENDPOINTS DE AUTENTICACIÓN
+# ==========================================
 
-def _find_available_aula(dia: str, hora_rango: str, tipo_req: str, min_capacidad: int, aulas_disponibles: list, horario_ocupado: dict):
-    # Filtramos aulas ocupadas en ese horario
-    asignaciones_en_slot = horario_ocupado.get((dia, hora_rango), [])
-    aulas_ocupadas_ids = {ocupacion["aula_id"] for ocupacion in asignaciones_en_slot}
+@app.post("/api/register", response_model=Usuario, status_code=201)
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    # Verificar si existe
+    db_user = db.query(UsuarioDB).filter(UsuarioDB.username == user.username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="El usuario ya existe")
     
-    for aula in aulas_disponibles:
-        # 1. Regla de Ocupación
-        if aula["id"] in aulas_ocupadas_ids: continue
-        
-        # 2. Regla de Tipo (Ej: Si pide Lab, solo Lab. Si pide Normal, prefiere Normal pero podría usar otra si somos flexibles, aquí seremos estrictos)
-        if aula["tipo"] != tipo_req: continue
-        
-        # 3. Regla de Capacidad (FASE 3)
-        if aula["capacidad"] < min_capacidad: continue
-        
-        return aula 
-    return None
-
-def _solve_recursive(requisitos_a_asignar, profesores_map, aulas_por_tipo, curso_id, min_capacidad_curso, db, horario_ocupado, current_schedule, almuerzo_slots_set):
-    if not requisitos_a_asignar:
-        return current_schedule
-
-    # Tomamos el requisito más difícil primero (el que pide más horas o aulas especiales)
-    # (Para simplificar, tomamos el primero de la lista, pero podríamos ordenar la lista antes)
-    current_req = requisitos_a_asignar[0]
-    remaining_reqs = requisitos_a_asignar[1:]
-
-    profesor_id = current_req["prof_id"]
-    horas_necesarias = current_req["horas_necesarias"]
-    tipo_aula_req = current_req["tipo_aula_requerida"]
-
-    prof_data = profesores_map.get(profesor_id)
-    if not prof_data: return None # Profe no existe o sin disponibilidad
+    hashed_pwd = seguridad.hashear_password(user.password)
     
-    available_slots_set = prof_data.get("disponibilidad_set", set())
+    # ADAPTADO A TU DATABASE.PY: Usamos 'rol' en lugar de 'role'
+    nuevo_usuario = UsuarioDB(
+        username=user.username,
+        hashed_password=hashed_pwd,
+        rol=user.role,   # <--- AQUÍ ESTABA EL ERROR ANTES
+        force_change_password=False
+    )
+    db.add(nuevo_usuario)
+    db.commit()
+    db.refresh(nuevo_usuario)
+    return Usuario(username=user.username)
+
+@app.post("/api/login")
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(UsuarioDB).filter(UsuarioDB.username == form_data.username).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Usuario o contraseña incorrectos")
     
-    # Clasificar slots: Preferidos vs No Preferidos (Almuerzo)
-    slots_preferidos = []
-    slots_no_preferidos = [] # Almuerzos o horarios feos
-
-    for slot_id in available_slots_set:
-        if slot_id in almuerzo_slots_set:
-            slots_no_preferidos.append(slot_id)
-        else:
-            slots_preferidos.append(slot_id)
-            
-    slots_preferidos.sort()
-    slots_no_preferidos.sort()
+    if not seguridad.verificar_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Usuario o contraseña incorrectos")
     
-    # Obtenemos TODAS las aulas disponibles en el sistema (luego filtraremos por tipo y capacidad dentro de find)
-    # Optimización: Solo pasar las aulas que coinciden con el tipo para no iterar de más
-    aulas_candidatas = aulas_por_tipo.get(tipo_aula_req, [])
-
-    def _assign_hours_recursive(hours_left, slots_pref, slots_no_pref, schedule):
-        if hours_left == 0:
-            # Requisito completado, pasamos al siguiente
-            return _solve_recursive(remaining_reqs, profesores_map, aulas_por_tipo, curso_id, min_capacidad_curso, db, horario_ocupado, schedule, almuerzo_slots_set)
-
-        if not slots_pref and not slots_no_pref:
-            return None # No hay más huecos para este profe
-        
-        # Intentamos usar slots preferidos primero
-        usando_preferido = True
-        if slots_pref:
-            slot_id = slots_pref[0]
-            rem_pref = slots_pref[1:]
-            rem_no_pref = slots_no_pref
-        else:
-            usando_preferido = False
-            slot_id = slots_no_pref[0]
-            rem_pref = []
-            rem_no_pref = slots_no_pref[1:]
-            
-        try:
-            dia, hora_inicio = slot_id.split('-')
-            hora_rango = calcular_hora_rango(hora_inicio)
-            if not hora_rango: raise ValueError
-        except:
-             # Slot inválido, saltamos
-             return _assign_hours_recursive(hours_left, rem_pref, rem_no_pref, schedule)
-
-        # Verificaciones
-        if _is_prof_and_curso_available(dia, hora_rango, profesor_id, curso_id, horario_ocupado):
-            
-            # FASE 3: Búsqueda de aula con Capacidad y Tipo
-            aula_obj = _find_available_aula(dia, hora_rango, tipo_aula_req, min_capacidad_curso, aulas_candidatas, horario_ocupado)
-            
-            if aula_obj: 
-                # Asignar
-                new_asignacion = AsignacionDB(
-                    id=f"a-{uuid.uuid4()}",
-                    curso_id=curso_id,
-                    profesor_id=profesor_id,
-                    materia_id=current_req["materia_id"],
-                    dia=dia,
-                    hora_rango=hora_rango,
-                    aula_id=aula_obj["id"]
-                )
-                
-                # Marcar ocupado
-                horario_ocupado.setdefault((dia, hora_rango), []).append({
-                    "curso_id": curso_id, 
-                    "profesor_id": profesor_id, 
-                    "aula_id": aula_obj["id"]
-                })
-                
-                # Recurso
-                res = _assign_hours_recursive(hours_left - 1, rem_pref, rem_no_pref, schedule + [new_asignacion])
-                if res: return res
-                
-                # Backtrack (Deshacer)
-                horario_ocupado[(dia, hora_rango)].pop()
-                
-        # Si no pudimos asignar en este slot, probamos el siguiente (saltamos este slot)
-        return _assign_hours_recursive(hours_left, rem_pref, rem_no_pref, schedule)
-
-    # Iniciamos intento de asignar las N horas de esta materia
-    return _assign_hours_recursive(horas_necesarias, slots_preferidos, slots_no_preferidos, current_schedule)
-
-def _run_solver_task(request: SolverRequest, username: str):
-    print(f"--- [TASK FASE 3] Generando para {request.curso_id} ---")
-    db: Session = SessionLocal()
-    try:
-        # 1. Limpiar horarios anteriores del curso
-        db.query(AsignacionDB).filter(AsignacionDB.curso_id == request.curso_id).delete()
-        db.commit()
-        
-        # 2. Datos del Curso (Importante para capacidad)
-        curso_db = db.query(CursoDB).filter(CursoDB.id == request.curso_id).first()
-        min_capacidad = curso_db.cantidad_alumnos if curso_db else 0
-        print(f"   > Alumnos: {min_capacidad}")
-
-        # 3. Cargar Profesores y Disponibilidad
-        profesores_db = db.query(ProfesorDB).all()
-        profesores_map = {}
-        for p in profesores_db:
-            try: disp = set(json.loads(p.disponibilidad_json or '[]'))
-            except: disp = set()
-            profesores_map[p.id] = {"id": p.id, "disponibilidad_set": disp}
-            
-        # 4. Cargar Aulas (y agruparlas para búsqueda rápida)
-        aulas_db = db.query(AulaDB).all()
-        aulas_por_tipo: Dict[str, List[Dict]] = {}
-        for a in aulas_db:
-            aulas_por_tipo.setdefault(a.tipo, []).append({
-                "id": a.id, "tipo": a.tipo, "capacidad": a.capacidad
-            })
-            
-        # 5. Cargar Preferencias (Almuerzos)
-        config_db = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
-        almuerzo_slots = set(json.loads(config_db.value_json).get("almuerzo_slots", [])) if config_db else set()
-            
-        # 6. Preparar Requisitos
-        req_ids = [a.requisito_id for a in request.asignaciones]
-        reqs_db = db.query(RequisitoDB).filter(RequisitoDB.curso_id == request.curso_id, RequisitoDB.id.in_(req_ids)).all()
-        req_map = {r.id: r for r in reqs_db}
-        
-        reqs_a_asignar = []
-        for ar in request.asignaciones:
-            r = req_map.get(ar.requisito_id)
-            if r: 
-                reqs_a_asignar.append({
-                    "req_id": r.id, 
-                    "prof_id": ar.profesor_id, 
-                    "horas_necesarias": r.horas_semanales, 
-                    "materia_id": r.materia_id, 
-                    "tipo_aula_requerida": r.tipo_aula_requerida
-                })
-        
-        # Ordenar requisitos: Primero los que piden aulas especiales (ej: Laboratorio), luego Normales
-        # Esto ayuda a que no se llenen los slots con materias normales antes de ubicar las difíciles
-        reqs_a_asignar.sort(key=lambda x: 0 if x["tipo_aula_requerida"] != "Normal" else 1)
-
-        # 7. Mapa de Ocupación Global (Otros cursos)
-        horario_ocupado = {}
-        for a in db.query(AsignacionDB).filter(AsignacionDB.curso_id != request.curso_id).all():
-            horario_ocupado.setdefault((a.dia, a.hora_rango), []).append({
-                "curso_id": a.curso_id, "profesor_id": a.profesor_id, "aula_id": a.aula_id
-            })
-            
-        # 8. EJECUTAR SOLVER
-        sol = _solve_recursive(reqs_a_asignar, profesores_map, aulas_por_tipo, request.curso_id, min_capacidad, db, horario_ocupado, [], almuerzo_slots)
-        
-        if sol:
-            db.add_all(sol); db.commit()
-            print("--- [TASK] Éxito: Horario Generado ---")
-        else:
-            print("--- [TASK] Fallo: No se encontró solución ---")
-    except Exception as e:
-        db.rollback(); print(f"--- [TASK ERROR] {e} ---")
-    finally:
-        db.close()
-
-# --- Endpoints ---
-
-@app.post("/api/generar-horario-completo", status_code=200)
-def generar_horario_completo_sync(req: SolverRequest, user: dict = Depends(get_current_admin_user)):
-    """
-    Versión Sincrónica corregida.
-    """
-    # CORRECCIÓN: Aquí pasamos 'req' (que es como llamamos a la variable arriba)
-    _run_solver_task(req, user["username"])
+    # Generar token (En el token usamos 'role' estándar, pero lo sacamos de user.rol)
+    access_token = seguridad.crear_token_acceso(data={"sub": user.username, "role": user.rol})
     
-    return {"mensaje": "Horario generado y guardado exitosamente."}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "role": user.rol, # Devolvemos 'role' al frontend para que React entienda
+        "username": user.username 
+    }
 
-@app.post("/api/profesores/buscar-suplentes")
-def buscar_suplentes(req: BusquedaSuplente, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    """Encuentra profesores libres en un horario específico."""
-    
-    # 1. Calculamos qué bloque horario es (Ej: "07:00" -> "07:00 a 07:40")
-    hora_rango = calcular_hora_rango(req.hora_inicio)
-    if not hora_rango:
-        raise HTTPException(400, "Hora inválida")
-    
-    # 2. Armamos el código del slot (Ej: "Lunes-07:00")
-    slot_buscado = f"{req.dia}-{req.hora_inicio}"
-    
-    # 3. Traemos todos los profesores
-    profesores = db.query(ProfesorDB).all()
-    
-    # 4. Buscamos quiénes están ocupados dando clase a esa hora
-    ocupados = db.query(AsignacionDB.profesor_id).filter(
-        AsignacionDB.dia == req.dia,
-        AsignacionDB.hora_rango == hora_rango
-    ).all()
-    ids_ocupados = {ocup.profesor_id for ocup in ocupados}
-    
-    disponibles = []
-    for p in profesores:
-        try:
-            disp_set = set(json.loads(p.disponibilidad_json or '[]'))
-        except:
-            disp_set = set()
-            
-        # CONDICIÓN A: El profe debe tener disponibilidad (verde)
-        if slot_buscado in disp_set:
-            # CONDICIÓN B: El profe NO debe estar dando clase en otro lado
-            if p.id not in ids_ocupados:
-                disponibles.append({"id": p.id, "nombre": p.nombre})
-                
-    return disponibles
+# --- REEMPLAZA TODA LA FUNCIÓN cambiar_password CON ESTO ---
 
 @app.post("/api/auth/change-password")
-def cambiar_password(data: PasswordChangeRequest, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user_db = db.query(UsuarioDB).filter(UsuarioDB.username == current_user["username"]).first()
-    if not user_db: raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if not seguridad.verificar_password(data.current_password, user_db.hashed_password):
+def cambiar_password(datos: PasswordChange, db: Session = Depends(get_db), u=Depends(get_current_user)):
+    # 1. Obtenemos el nombre de usuario (sea dict u objeto)
+    username = None
+    if isinstance(u, dict):
+        username = u.get("sub") or u.get("username")
+    else:
+        username = u.username
+
+    # 2. Buscamos al usuario REAL en la Base de Datos
+    user_db = db.query(UsuarioDB).filter(UsuarioDB.username == username).first()
+    
+    if not user_db:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    # 3. Verificamos la contraseña usando el usuario de la DB (user_db), NO el token (u)
+    if not seguridad.verificar_password(datos.current_password, user_db.hashed_password):
         raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
-    if len(data.new_password) < 4:
-        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 4 caracteres")
-    user_db.hashed_password = seguridad.hashear_password(data.new_password)
+    
+    # 4. Actualizamos
+    user_db.hashed_password = seguridad.hashear_password(datos.new_password)
     user_db.force_change_password = False 
     db.commit()
+    
     return {"mensaje": "Contraseña actualizada correctamente"}
+# ==========================================
+# 5. ENDPOINTS DEL SISTEMA
+# ==========================================
 
-@app.get("/api/config/publicacion-status")
-def get_publicacion_status(db: Session = Depends(get_db)):
-    return {"publicado": estan_horarios_publicados(db)}
-
-@app.post("/api/config/publicacion-status")
-def set_publicacion_status(publicado: bool, user: dict = Depends(get_current_admin_user), db: Session = Depends(get_db)):
-    conf = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "horarios_publicados").first()
-    if not conf:
-        conf = ConfiguracionDB(key="horarios_publicados")
-        db.add(conf)
-    conf.value_json = "true" if publicado else "false"
+@app.post("/api/generar_horario")
+def generar_horario_automatico(db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    # 1. Limpiar asignaciones anteriores
+    db.query(AsignacionDB).delete()
     db.commit()
-    return {"mensaje": "Estado actualizado", "publicado": publicado}
+    
+    # 2. Obtener configuraciones globales (ej: Almuerzos bloqueados)
+    config_db = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
+    almuerzo_slots = set()
+    if config_db:
+        try: almuerzo_slots = set(json.loads(config_db.value_json).get("almuerzo_slots", []))
+        except: pass
 
-# --- Preferencias (Almuerzo) ---
-@app.post("/api/config/preferencias")
-def guardar_preferencias(prefs: Preferencias, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    conf = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
-    if not conf:
-        conf = ConfiguracionDB(key="preferencias_horarios")
-        db.add(conf)
-    data = {"almuerzo_slots": prefs.almuerzo_slots}
-    conf.value_json = json.dumps(data)
-    db.commit()
-    return {"mensaje": "Preferencias guardadas"}
+    # 3. Obtener todos los REQUISITOS (Qué materias hay que dar)
+    # Ordenamos: Primero los que tienen Aula Fija (más difícil), luego por cantidad de horas (de mayor a menor)
+    requisitos = db.query(RequisitoDB).all()
+    requisitos.sort(key=lambda r: (1 if r.aula_preferida_id else 0, r.horas_semanales), reverse=True)
+    
+    # --- CACHÉ DE DISPONIBILIDAD DE PROFESORES ---
+    # Convertimos la lista JSON ["Lunes-07:40", ...] en un Set de Python para búsqueda rápida
+    profesores_cache = {}
+    todos_profes = db.query(ProfesorDB).all()
+    for p in todos_profes:
+        try:
+            # Si tiene disponibilidad cargada, la usamos.
+            # Si es NULL o vacía, asumimos que NO cargó nada (¿Lo tratamos como Libre o como No Disponible?)
+            # En este caso: Si no cargó nada, asumimos que está LIBRE (dispo_list vacía = no restricciones)
+            # PERO: Tu frontend manda una lista con lo que SÍ puede.
+            # Ajuste: Si la lista tiene elementos, SOLO puede en esos elementos.
+            # Si la lista está vacía, asumimos que puede siempre (o nunca, según tu política).
+            # Vamos a asumir: Si tiene datos, respetamos. Si no, libre.
+            
+            dispo_list = json.loads(p.disponibilidad_json) if p.disponibilidad_json else []
+            profesores_cache[p.id] = set(dispo_list)
+        except:
+            profesores_cache[p.id] = set()
 
-@app.get("/api/config/preferencias")
-def obtener_preferencias(db: Session = Depends(get_db)):
-    conf = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
-    if not conf: return {"almuerzo_slots": []}
-    try: return json.loads(conf.value_json)
-    except: return {"almuerzo_slots": []}
+    asignaciones_creadas = 0
+    conflictos_log = []
 
-# --- Login / Register ---
-@app.post("/api/register", response_model=Usuario, status_code=201)
-def registrar_usuario(u: UsuarioRegistro, db: Session = Depends(get_db)):
-    if db.query(UsuarioDB).filter(UsuarioDB.username == u.username).first():
-        raise HTTPException(status_code=400, detail="Usuario existe")
-    hashed = seguridad.hashear_password(u.password)
-    db.add(UsuarioDB(username=u.username, hashed_password=hashed)); db.commit()
-    return Usuario(username=u.username)
+    # 4. EL ALGORITMO PRINCIPAL
+    for req in requisitos:
+        horas_pendientes = req.horas_semanales
+        
+        # Intentamos ubicar cada hora
+        for dia in DIAS_SEMANA:
+            if horas_pendientes <= 0: break
+            
+            for hora in HORARIOS_ORDENADOS:
+                if horas_pendientes <= 0: break
+                
+                clave_tiempo = f"{dia}-{hora}"
+                
+                # A. REGLA: NO ALMUERZOS
+                if hora in almuerzo_slots: continue
+                
+                # B. REGLA: DISPONIBILIDAD DEL DOCENTE (NUEVO) 🧠
+                if req.profesor_id:
+                    dispo_del_profe = profesores_cache.get(req.profesor_id)
+                    # Si el set tiene datos, significa que el profe marcó sus horas permitidas.
+                    # Si la hora actual NO está en ese set, saltamos.
+                    if dispo_del_profe and len(dispo_del_profe) > 0:
+                        if clave_tiempo not in dispo_del_profe:
+                            continue # El profe dijo que no.
 
-@app.post("/api/login", response_model=Token)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(UsuarioDB).filter(UsuarioDB.username == form.username).first()
-    if not user or not seguridad.verificar_password(form.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    token_data = {"sub": user.username, "rol": user.rol, "force_change_password": user.force_change_password}
-    token = seguridad.crear_access_token(token_data)
-    return {"access_token": token, "token_type": "bearer", "must_change_password": user.force_change_password, "rol": user.rol}
+                # C. REGLA: CURSO LIBRE
+                ocupado_curso = db.query(AsignacionDB).filter(
+                    AsignacionDB.curso_id == req.curso_id, 
+                    AsignacionDB.dia == dia, 
+                    AsignacionDB.hora_rango == hora
+                ).first()
+                if ocupado_curso: continue
 
-# --- Horarios (Vista Profe) ---
-@app.get("/api/horarios/mi-horario", response_model=List[Dict])
-def obtener_mi_horario(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    es_admin = current_user["rol"] == "admin"
-    esta_publicado = estan_horarios_publicados(db)
-    if not es_admin and not esta_publicado: return []
-    username = current_user["username"]
-    prof = db.query(ProfesorDB).filter(ProfesorDB.nombre == username).first()
-    if not prof: return []
-    asignaciones = db.query(AsignacionDB).options(joinedload(AsignacionDB.curso), joinedload(AsignacionDB.materia), joinedload(AsignacionDB.aula)).filter(AsignacionDB.profesor_id == prof.id).all()
-    resp = []
-    for a in asignaciones:
-        resp.append({
-            "id": a.id, "dia": a.dia, "hora_rango": a.hora_rango,
-            "materia": a.materia.nombre if a.materia else "??",
-            "curso": a.curso.nombre_completo if a.curso else "??",
-            "aula": a.aula.nombre if a.aula else "Sin Aula",
-            "color": "#3498db"
+                # D. REGLA: PROFESOR LIBRE (UBICUIDAD)
+                if req.profesor_id:
+                    ocupado_profe = db.query(AsignacionDB).filter(
+                        AsignacionDB.profesor_id == req.profesor_id,
+                        AsignacionDB.dia == dia,
+                        AsignacionDB.hora_rango == hora
+                    ).first()
+                    if ocupado_profe: continue
+                
+                # E. REGLA: AULA
+                aula_asignada_id = None
+                
+                # Si pide aula específica
+                if req.aula_preferida_id:
+                    ocupado_aula = db.query(AsignacionDB).filter(
+                        AsignacionDB.aula_id == req.aula_preferida_id,
+                        AsignacionDB.dia == dia,
+                        AsignacionDB.hora_rango == hora
+                    ).first()
+                    if ocupado_aula: continue
+                    aula_asignada_id = req.aula_preferida_id
+                
+                # --- SI PASÓ TODOS LOS FILTROS: ASIGNAMOS ---
+                nueva_asignacion = AsignacionDB(
+                    id=f"asig-{uuid.uuid4()}",
+                    dia=dia, hora_rango=hora,
+                    curso_id=req.curso_id, materia_id=req.materia_id,
+                    profesor_id=req.profesor_id, aula_id=aula_asignada_id 
+                )
+                db.add(nueva_asignacion)
+                # Guardamos para que la siguiente iteración sepa que esto ya se ocupó
+                db.commit() 
+                
+                horas_pendientes -= 1
+                asignaciones_creadas += 1
+
+        if horas_pendientes > 0:
+            conflictos_log.append(f"Materia {req.materia_id} (Curso {req.curso_id}): Faltaron asignar {horas_pendientes} hs.")
+
+    mensaje_final = f"¡Proceso finalizado! 🚀\nSe generaron {asignaciones_creadas} módulos."
+    if conflictos_log:
+        mensaje_final += f"\n\n⚠️ Conflictos:\n" + "\n".join(conflictos_log)
+
+    return {"mensaje": mensaje_final}
+
+# --- REQUISITOS ---
+@app.get("/api/requisitos")
+def list_all_requisitos(db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    resultados = db.query(RequisitoDB).options(
+        joinedload(RequisitoDB.curso), joinedload(RequisitoDB.materia),
+        joinedload(RequisitoDB.profesor), joinedload(RequisitoDB.aula_preferida)
+    ).all()
+    lista_visual = []
+    for r in resultados:
+        lista_visual.append({
+            "id": r.id,
+            "curso_id": r.curso_id, "curso_anio": r.curso.anio if r.curso else "?", "curso_division": r.curso.division if r.curso else "?",
+            "materia_id": r.materia_id, "materia_nombre": r.materia.nombre if r.materia else "??",
+            "materia_color": r.materia.color_hex if r.materia else "#cccccc",
+            "profesor_id": r.profesor_id, "profesor_nombre": r.profesor.nombre if r.profesor else "Sin Asignar",
+            "aula_nombre": r.aula_preferida.nombre if r.aula_preferida else None,
+            "horas_semanales": r.horas_semanales
         })
-    return resp
+    return lista_visual
 
-# --- CRUD Básico ---
+@app.post("/api/requisitos")
+def add_req(r: RequisitoCreate, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    nuevo_req = RequisitoDB(
+        id=f"req-{uuid.uuid4()}", curso_id=r.curso_id, materia_id=r.materia_id,
+        profesor_id=r.profesor_id, aula_preferida_id=r.aula_preferida_id, horas_semanales=r.horas_semanales
+    )
+    db.add(nuevo_req)
+    try: db.commit(); db.refresh(nuevo_req); return {"mensaje": "Creado", "id": nuevo_req.id}
+    except Exception as e: db.rollback(); raise HTTPException(400, str(e))
+
+@app.delete("/api/requisitos/{id}")
+def delete_req(id: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    req = db.query(RequisitoDB).filter(RequisitoDB.id == id).first()
+    if not req: raise HTTPException(404)
+    db.delete(req); db.commit()
+    return {"mensaje": "Eliminado"}
+
 @app.get("/api/profesores", response_model=List[Profesor])
 def obtener_profesores(db: Session = Depends(get_db), u=Depends(get_current_user)):
-    return [Profesor(id=p.id, nombre=p.nombre, disponibilidad=json.loads(p.disponibilidad_json or '[]')) for p in db.query(ProfesorDB).all()]
+    # DEVOLVEMOS EL COLOR
+    return [
+        Profesor(
+            id=p.id, 
+            nombre=p.nombre, 
+            disponibilidad=json.loads(p.disponibilidad_json or '[]'),
+            color=p.color or "#0d9488" # <--- NUEVO
+        ) for p in db.query(ProfesorDB).all()
+    ]
 
+# Busca el endpoint @app.post("/api/profesores") y actualízalo:
 @app.post("/api/profesores", response_model=Profesor, status_code=201)
 def agregar_profesor(p: Profesor, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
     if db.query(ProfesorDB).filter(ProfesorDB.nombre == p.nombre).first(): raise HTTPException(409, "Existe")
     pid = f"p-{uuid.uuid4()}"
-    db.add(ProfesorDB(id=pid, nombre=p.nombre, disponibilidad_json=json.dumps(p.disponibilidad)))
-    # Crear usuario asociado
+    
+    db.add(ProfesorDB(
+        id=pid, 
+        nombre=p.nombre, 
+        dni=p.dni, # <--- GUARDAMOS EL DNI
+        disponibilidad_json=json.dumps(p.disponibilidad),
+        color=p.color
+    ))
+    
+    # Creamos usuario para login
     if not db.query(UsuarioDB).filter(UsuarioDB.username == p.nombre).first():
         db.add(UsuarioDB(username=p.nombre, hashed_password=seguridad.hashear_password("1234"), rol="profesor", force_change_password=True))
+    
     db.commit()
-    return Profesor(id=pid, nombre=p.nombre, disponibilidad=p.disponibilidad)
+    return p
 
 @app.delete("/api/profesores/{pid}", status_code=204)
 def borrar_profesor(pid: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
     p = db.query(ProfesorDB).filter(ProfesorDB.id == pid).first()
     if not p: raise HTTPException(404)
-    if db.query(AsignacionDB).filter(AsignacionDB.profesor_id == pid).count(): raise HTTPException(409, "Tiene clases")
     u_db = db.query(UsuarioDB).filter(UsuarioDB.username == p.nombre).first()
-    db.delete(p)
     if u_db: db.delete(u_db)
-    db.commit()
+    db.delete(p); db.commit()
     return Response(status_code=204)
 
-@app.put("/api/profesores/{pid}", response_model=Profesor)
-def mod_profesor(pid: str, pup: ProfesorUpdate, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    p = db.query(ProfesorDB).filter(ProfesorDB.id == pid).first()
-    if not p: raise HTTPException(404)
-    if p.nombre != pup.nombre:
-        if db.query(ProfesorDB).filter(ProfesorDB.nombre == pup.nombre).first(): raise HTTPException(409, "Nombre ocupado")
-        udb = db.query(UsuarioDB).filter(UsuarioDB.username == p.nombre).first()
-        if udb: udb.username = pup.nombre
-        p.nombre = pup.nombre
-    p.disponibilidad_json = json.dumps(pup.disponibilidad)
-    db.commit(); db.refresh(p)
-    return Profesor(id=p.id, nombre=p.nombre, disponibilidad=json.loads(p.disponibilidad_json))
-
+# --- MATERIAS ---
 @app.get("/api/materias", response_model=List[Materia])
 def get_materias(db: Session = Depends(get_db), u=Depends(get_current_user)):
-    return [Materia(id=m.id, nombre=m.nombre) for m in db.query(MateriaDB).all()]
-
-@app.delete("/api/admin/reset-horarios", status_code=200)
-def reset_assignments(db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    """Elimina TODAS las asignaciones de horarios (limpieza masiva)."""
-    db.query(AsignacionDB).delete()
-    db.commit()
-    return {"mensaje": "Se han eliminado todos los horarios generados."}
+    return [Materia(id=m.id, nombre=m.nombre, color_hex=m.color_hex) for m in db.query(MateriaDB).all()]
 
 @app.post("/api/materias", response_model=Materia)
 def add_materia(m: Materia, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
     if db.query(MateriaDB).filter(MateriaDB.nombre == m.nombre).first(): raise HTTPException(409)
-    nm = MateriaDB(id=f"m-{uuid.uuid4()}", nombre=m.nombre)
+    nm = MateriaDB(id=f"m-{uuid.uuid4()}", nombre=m.nombre, color_hex=m.color_hex)
     db.add(nm); db.commit(); db.refresh(nm)
-    return Materia(id=nm.id, nombre=nm.nombre)
+    return Materia(id=nm.id, nombre=nm.nombre, color_hex=nm.color_hex)
 
 @app.delete("/api/materias/{mid}", status_code=204)
 def del_materia(mid: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    if db.query(RequisitoDB).filter(RequisitoDB.materia_id == mid).count(): raise HTTPException(409, "En uso")
     db.query(MateriaDB).filter(MateriaDB.id == mid).delete(); db.commit()
     return Response(status_code=204)
 
+# --- CURSOS ---
 @app.get("/api/cursos", response_model=List[Curso])
 def get_cursos(db: Session = Depends(get_db), u=Depends(get_current_user)):
     return [Curso(id=c.id, anio=c.anio, division=c.division, cantidad_alumnos=c.cantidad_alumnos, nombre_display=c.nombre_completo) for c in db.query(CursoDB).all()]
@@ -574,14 +474,7 @@ def del_curso(cid: str, db: Session = Depends(get_db), u=Depends(get_current_adm
     db.query(CursoDB).filter(CursoDB.id == cid).delete(); db.commit()
     return Response(status_code=204)
 
-@app.put("/api/cursos/{cid}", response_model=Curso)
-def mod_curso(cid: str, cup: CursoUpdate, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    c = db.query(CursoDB).filter(CursoDB.id == cid).first()
-    if not c: raise HTTPException(404)
-    c.anio = cup.anio; c.division = cup.division; c.cantidad_alumnos = cup.cantidad_alumnos
-    db.commit(); db.refresh(c)
-    return Curso(id=c.id, anio=c.anio, division=c.division, cantidad_alumnos=c.cantidad_alumnos, nombre_display=c.nombre_completo)
-
+# --- AULAS ---
 @app.get("/api/aulas", response_model=List[Aula])
 def get_aulas(db: Session = Depends(get_db), u=Depends(get_current_user)):
     return [Aula(id=a.id, nombre=a.nombre, tipo=a.tipo, capacidad=a.capacidad) for a in db.query(AulaDB).all()]
@@ -593,48 +486,27 @@ def add_aula(a: Aula, db: Session = Depends(get_db), u=Depends(get_current_admin
     db.add(na); db.commit(); db.refresh(na)
     return Aula(id=na.id, nombre=na.nombre, tipo=na.tipo, capacidad=na.capacidad)
 
-@app.put("/api/aulas/{aid}", response_model=Aula)
-def mod_aula(aid: str, aup: AulaUpdate, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    a = db.query(AulaDB).filter(AulaDB.id == aid).first()
-    if not a: raise HTTPException(404)
-    a.nombre = aup.nombre; a.tipo = aup.tipo; a.capacidad = aup.capacidad
-    db.commit(); db.refresh(a)
-    return Aula(id=a.id, nombre=a.nombre, tipo=a.tipo, capacidad=a.capacidad)
-
 @app.delete("/api/aulas/{aid}", status_code=204)
 def del_aula(aid: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    if db.query(AsignacionDB).filter(AsignacionDB.aula_id == aid).count(): raise HTTPException(409, "En uso")
     db.query(AulaDB).filter(AulaDB.id == aid).delete(); db.commit()
     return Response(status_code=204)
 
-@app.get("/api/requisitos/{cid}", response_model=List[dict])
-def get_reqs(cid: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    return [{"id": r.id, "curso_id": r.curso_id, "materia_id": r.materia_id, "horas_semanales": r.horas_semanales, "tipo_aula_requerida": r.tipo_aula_requerida, "materia_nombre": r.materia.nombre if r.materia else "??"} for r in db.query(RequisitoDB).options(joinedload(RequisitoDB.materia)).filter(RequisitoDB.curso_id == cid).all()]
-
-@app.post("/api/requisitos", response_model=Requisito)
-def add_req(r: Requisito, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    nr = RequisitoDB(id=f"r-{uuid.uuid4()}", curso_id=r.curso_id, materia_id=r.materia_id, horas_semanales=r.horas_semanales, tipo_aula_requerida=r.tipo_aula_requerida)
-    db.add(nr); db.commit(); db.refresh(nr)
-    return Requisito(id=nr.id, curso_id=nr.curso_id, materia_id=nr.materia_id, horas_semanales=nr.horas_semanales, tipo_aula_requerida=nr.tipo_aula_requerida)
-
-@app.get("/api/horarios/{cid}", response_model=Dict[str, Dict[str, dict]])
+# --- HORARIOS & EXPORT ---
+@app.get("/api/horarios/{cid}")
 def get_horario_curso(cid: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    asigs = db.query(AsignacionDB).options(joinedload(AsignacionDB.profesor), joinedload(AsignacionDB.materia), joinedload(AsignacionDB.aula)).filter(AsignacionDB.curso_id == cid).all()
+    asigs = db.query(AsignacionDB).options(
+        joinedload(AsignacionDB.profesor), joinedload(AsignacionDB.materia), joinedload(AsignacionDB.aula)
+    ).filter(AsignacionDB.curso_id == cid).all()
     vista = {}
     for a in asigs:
-        vista.setdefault(a.hora_rango, {})[a.dia] = {"text": f"{a.profesor.nombre if a.profesor else '??'} ({a.materia.nombre if a.materia else '??'})", "id": a.id, "aula_nombre": a.aula.nombre if a.aula else "Sin Aula"}
+        vista.setdefault(a.hora_rango, {})[a.dia] = {
+            "text": f"{a.materia.nombre if a.materia else '??'}",
+            "profesor_nombre": a.profesor.nombre if a.profesor else "Sin Profe",
+            "materia_nombre": a.materia.nombre if a.materia else "??",
+            "color_materia": a.materia.color_hex if a.materia else "#0d9488",
+            "id": a.id, "aula_nombre": a.aula.nombre if a.aula else "Sin Aula"
+        }
     return vista
-
-@app.delete("/api/horarios/{cid}", status_code=200)
-def del_horario_curso(cid: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    db.query(AsignacionDB).filter(AsignacionDB.curso_id == cid).delete()
-    db.commit()
-    return {"mensaje": "Horarios borrados"}
-
-@app.get("/api/reportes/carga-horaria-profesor", response_model=List[ReporteCargaHoraria])
-def reporte_carga(db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
-    res = db.query(ProfesorDB.nombre, func.count(AsignacionDB.id).label("cnt")).join(AsignacionDB, ProfesorDB.id == AsignacionDB.profesor_id, isouter=True).group_by(ProfesorDB.nombre).order_by(func.count(AsignacionDB.id).desc()).all()
-    return [ReporteCargaHoraria(nombre_profesor=n, horas_asignadas=c) for n, c in res]
 
 @app.get("/api/export/excel")
 def export_excel(db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
@@ -642,24 +514,330 @@ def export_excel(db: Session = Depends(get_db), u=Depends(get_current_admin_user
     if "Sheet" in wb.sheetnames: wb.remove(wb["Sheet"])
     cursos = db.query(CursoDB).all()
     asigs = db.query(AsignacionDB).options(joinedload(AsignacionDB.profesor), joinedload(AsignacionDB.materia), joinedload(AsignacionDB.aula)).all()
-    horarios = ["07:00 a 07:40", "07:40 a 08:20", "08:20 a 09:00", "09:00 a 09:40", "09:40 a 10:20", "10:20 a 11:00", "11:00 a 11:40", "11:40 a 12:20", "12:20 a 13:00", "13:00 a 13:40", "13:40 a 14:20", "14:20 a 15:00", "15:00 a 15:40", "15:40 a 16:20", "16:20 a 17:00", "17:00 a 17:40", "17:40 a 18:20", "18:20 a 19:00", "19:00 a 19:40"]
-    dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
     
     for c in cursos:
         ws = wb.create_sheet(f"{c.nombre_completo}"[:30])
-        ws.append(['Hora'] + dias)
-        for cell in ws[1]: cell.font = openpyxl.styles.Font(bold=True, color="FFFFFF"); cell.fill = openpyxl.styles.PatternFill("solid", fgColor="1D72B8")
+        ws.append(['Hora'] + DIAS_SEMANA)
+        for cell in ws[1]: 
+            cell.font = openpyxl.styles.Font(bold=True, color="FFFFFF")
+            cell.fill = openpyxl.styles.PatternFill("solid", fgColor="1D72B8")
+        
         vista = {}
         for a in asigs:
             if a.curso_id == c.id:
                 prof = a.profesor.nombre if a.profesor else "??"
                 mat = a.materia.nombre if a.materia else "??"
-                aula = f"\n[{a.aula.nombre}]" if a.aula else ""
-                vista.setdefault(a.hora_rango, {})[a.dia] = f"{prof} ({mat}){aula}"
-        for h in horarios:
-            ws.append([h] + [vista.get(h, {}).get(d, "") for d in dias])
-        ws.column_dimensions['A'].width = 15
-        for col in ['B','C','D','E','F']: ws.column_dimensions[col].width = 25
+                aula = f" [{a.aula.nombre}]" if a.aula else ""
+                vista.setdefault(a.hora_rango, {})[a.dia] = f"{mat}\n({prof}){aula}"
         
+        for h in HORARIOS_ORDENADOS:
+            row = [h] + [vista.get(h, {}).get(d, "") for d in DIAS_SEMANA]
+            ws.append(row)
+            
+        ws.column_dimensions['A'].width = 15
+        for col in ['B','C','D','E','F']: 
+            ws.column_dimensions[col].width = 25
+            
     buf = BytesIO(); wb.save(buf); buf.seek(0)
     return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=Horarios.xlsx"})
+
+
+# --- CONFIG Y HERRAMIENTAS ---
+@app.get("/api/config/preferencias")
+def obtener_preferencias(db: Session = Depends(get_db)):
+    conf = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
+    if not conf: return {"almuerzo_slots": []}
+    try: return json.loads(conf.value_json)
+    except: return {"almuerzo_slots": []}
+
+@app.post("/api/config/preferencias")
+def guardar_preferencias(prefs: Preferencias, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    conf = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "preferencias_horarios").first()
+    if not conf:
+        conf = ConfiguracionDB(key="preferencias_horarios")
+        db.add(conf)
+    conf.value_json = json.dumps({"almuerzo_slots": prefs.almuerzo_slots})
+    db.commit()
+    return {"mensaje": "Guardado"}
+
+@app.get("/api/reportes/carga-horaria-profesor", response_model=List[ReporteCargaHoraria])
+def reporte_carga(db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    # Consultamos Nombre, Color y Cantidad
+    res = db.query(
+        ProfesorDB.nombre, 
+        ProfesorDB.color, 
+        func.count(AsignacionDB.id).label("cnt")
+    ).join(AsignacionDB, ProfesorDB.id == AsignacionDB.profesor_id, isouter=True)\
+     .group_by(ProfesorDB.id)\
+     .order_by(func.count(AsignacionDB.id).desc()).all()
+    
+    return [
+        ReporteCargaHoraria(
+            nombre_profesor=n, 
+            horas_asignadas=c, 
+            color=col or "#0d9488" # <--- Usamos el color del profe
+        ) for n, col, c in res
+    ]
+
+@app.delete("/api/admin/reset-horarios", status_code=200)
+def reset_assignments(db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    db.query(AsignacionDB).delete(); db.commit()
+    return {"mensaje": "Horarios eliminados."}
+
+@app.post("/api/admin/reset-password/{username}")
+def reset_password_admin(username: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    user = db.query(UsuarioDB).filter(UsuarioDB.username == username).first()
+    if not user: raise HTTPException(404, "Usuario no encontrado")
+    user.hashed_password = seguridad.hashear_password("1234")
+    user.force_change_password = True
+    db.commit()
+    return {"mensaje": f"Clave de '{username}' restablecida a '1234'"}
+
+@app.post("/api/profesores/buscar-suplentes")
+def buscar_suplentes(req: BusquedaSuplente, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    hora_rango = calcular_hora_rango(req.hora_inicio)
+    if not hora_rango: raise HTTPException(400, "Hora inválida")
+    slot_buscado = f"{req.dia}-{req.hora_inicio}"
+    profesores = db.query(ProfesorDB).all()
+    ocupados = db.query(AsignacionDB.profesor_id).filter(AsignacionDB.dia == req.dia, AsignacionDB.hora_rango == hora_rango).all()
+    ids_ocupados = {ocup.profesor_id for ocup in ocupados}
+    disponibles = []
+    for p in profesores:
+        try: disp_set = set(json.loads(p.disponibilidad_json or '[]'))
+        except: disp_set = set()
+        if slot_buscado in disp_set and p.id not in ids_ocupados:
+            disponibles.append({"id": p.id, "nombre": p.nombre})
+    return disponibles
+
+@app.post("/api/horarios/mover")
+def mover_asignacion(mov: MovimientoHorario, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    # 1. Buscamos la asignación que se quiere mover ("El Viajero")
+    viajero = db.query(AsignacionDB).filter(AsignacionDB.id == mov.asignacion_id).first()
+    if not viajero:
+        raise HTTPException(404, "Asignación no encontrada")
+
+    # Datos del destino
+    nuevo_dia = mov.nuevo_dia
+    nueva_hora = mov.nueva_hora
+    curso_actual_id = viajero.curso_id
+
+    # --- 🛡️ REGLA 1: VALIDAR DISPONIBILIDAD DEL DOCENTE ---
+    if viajero.profesor_id:
+        profesor = db.query(ProfesorDB).filter(ProfesorDB.id == viajero.profesor_id).first()
+        if profesor and profesor.disponibilidad_json:
+            try:
+                dispo = json.loads(profesor.disponibilidad_json)
+                slot_destino = f"{nuevo_dia}-{nueva_hora}"
+                # Si la lista de disponibilidad NO está vacía y el slot NO está en ella...
+                if dispo and (slot_destino not in dispo):
+                    raise HTTPException(
+                        status_code=409, 
+                        detail=f"El profesor {profesor.nombre} NO tiene disponibilidad el {nuevo_dia} a las {nueva_hora}."
+                    )
+            except json.JSONDecodeError:
+                pass # Si falla el JSON, ignoramos esta regla por seguridad
+
+    # --- 🛡️ REGLA 2: VALIDAR QUE EL DOCENTE NO ESTÉ EN OTRO CURSO ---
+    if viajero.profesor_id:
+        # Buscamos si existe ALGUNA asignación de este profe, en ese día y hora, PERO en otro ID (para no contarse a sí mismo)
+        ocupado = db.query(AsignacionDB).options(joinedload(AsignacionDB.curso)).filter(
+            AsignacionDB.profesor_id == viajero.profesor_id,
+            AsignacionDB.dia == nuevo_dia,
+            AsignacionDB.hora_rango == nueva_hora,
+            AsignacionDB.id != viajero.id # Importante: que no sea él mismo
+        ).first()
+
+        if ocupado:
+            # Si encontramos algo, es un choque.
+            nombre_curso_choque = f"{ocupado.curso.anio} {ocupado.curso.division}" if ocupado.curso else "otro curso"
+            raise HTTPException(
+                status_code=409, 
+                detail=f"CONFLICTO: El profesor ya está asignado en {nombre_curso_choque} a esa hora."
+            )
+
+    # --- LÓGICA DE MOVIMIENTO (Si pasó las validaciones) ---
+    
+    # Verificamos quién está en el destino (el "Inquilino") para hacer enroque
+    inquilino = db.query(AsignacionDB).filter(
+        AsignacionDB.curso_id == viajero.curso_id,
+        AsignacionDB.dia == nuevo_dia,
+        AsignacionDB.hora_rango == nueva_hora
+    ).first()
+
+    mensaje = "Horario movido exitosamente"
+    
+    # Guardamos origen por si hay swap
+    dia_origen = viajero.dia
+    hora_origen = viajero.hora_rango
+
+    if inquilino:
+        # CASO SWAP: Hay alguien. Lo mandamos al origen del viajero.
+        # ¡OJO! Deberíamos validar si el "Inquilino" puede ir al origen, pero por ahora lo permitimos para facilitar el uso.
+        inquilino.dia = dia_origen
+        inquilino.hora_rango = hora_origen
+        mensaje = "Horarios intercambiados (Swap)"
+
+    # Movemos al viajero
+    viajero.dia = nuevo_dia
+    viajero.hora_rango = nueva_hora
+    
+    db.commit()
+    return {"mensaje": mensaje}
+
+@app.get("/api/horarios/profesor/me")
+def obtener_mis_horarios(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    nombre_profe = current_user["username"]
+    profe_db = db.query(ProfesorDB).filter(ProfesorDB.nombre == nombre_profe).first()
+    
+    if not profe_db:
+        # En tu DB vieja no hay 'profesor_nombre', pero podemos buscar por relación si existiera.
+        # En tu caso, los profesores tienen el mismo nombre de usuario que el nombre en ProfesorDB.
+        # Si no se encuentra el profesor en DB, no hay mucho que hacer, devolvemos vacío.
+        return {}
+    
+    asignaciones = db.query(AsignacionDB).filter(AsignacionDB.profesor_id == profe_db.id).all()
+    
+    grilla = {}
+    for a in asignaciones:
+        if a.hora_rango not in grilla: grilla[a.hora_rango] = {}
+        grilla[a.hora_rango][a.dia] = {
+            "materia": a.materia.nombre if a.materia else "??",
+            "curso": f"{a.curso.anio} \"{a.curso.division}\"" if a.curso else "?",
+            "aula": a.aula.nombre if a.aula else "Sin Aula",
+            "color": a.materia.color_hex if a.materia else "#0d9488"
+        }
+    return grilla
+
+# Modelo para recibir la configuración
+class ConfiguracionInstitucional(BaseModel):
+    nombre: str
+    direccion: Optional[str] = ""
+    logo_base64: Optional[str] = None 
+
+# ==========================================
+# 6. CONFIGURACIÓN INSTITUCIONAL (DEBUG MODE)
+# ==========================================
+
+# Modelo para recibir la configuración
+class ConfiguracionInstitucional(BaseModel):
+    nombre: str
+    direccion: Optional[str] = ""
+    logo_base64: Optional[str] = None 
+
+@app.post("/api/config/institucion")
+def guardar_config_institucion(config: ConfiguracionInstitucional, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    print("--- 🟢 INICIANDO GUARDADO DE CONFIGURACIÓN ---")
+    print(f"Recibido Nombre: {config.nombre}")
+    print(f"Recibido Dirección: {config.direccion}")
+    if config.logo_base64:
+        print(f"Recibido Logo (Tamaño): {len(config.logo_base64)} caracteres")
+    else:
+        print("Recibido Logo: None")
+
+    try:
+        # 1. Guardar Nombre
+        conf_nombre = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "institucion_nombre").first()
+        if not conf_nombre:
+            print("-> Creando registro 'institucion_nombre'...")
+            conf_nombre = ConfiguracionDB(key="institucion_nombre")
+            db.add(conf_nombre)
+        conf_nombre.value_json = json.dumps(config.nombre)
+
+        # 2. Guardar Direccion
+        conf_dir = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "institucion_direccion").first()
+        if not conf_dir:
+            print("-> Creando registro 'institucion_direccion'...")
+            conf_dir = ConfiguracionDB(key="institucion_direccion")
+            db.add(conf_dir)
+        conf_dir.value_json = json.dumps(config.direccion)
+
+        # 3. Guardar Logo
+        if config.logo_base64:
+            print("-> Procesando guardado de Logo...")
+            conf_logo = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "institucion_logo").first()
+            if not conf_logo:
+                print("-> Creando registro 'institucion_logo'...")
+                conf_logo = ConfiguracionDB(key="institucion_logo")
+                db.add(conf_logo)
+            conf_logo.value_json = json.dumps(config.logo_base64)
+            print("-> Logo asignado a la base de datos.")
+
+        print("-> Ejecutando COMMIT...")
+        db.commit()
+        print("--- ✅ GUARDADO EXITOSO ---")
+        return {"mensaje": "Configuración institucional guardada"}
+
+    except Exception as e:
+        print(f"--- ❌ ERROR GRAVE AL GUARDAR: {e} ---")
+        db.rollback() # Deshacer cambios si falla
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+
+@app.get("/api/config/institucion")
+def obtener_config_institucion(db: Session = Depends(get_db)):
+    try:
+        c_nombre = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "institucion_nombre").first()
+        c_dir = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "institucion_direccion").first()
+        c_logo = db.query(ConfiguracionDB).filter(ConfiguracionDB.key == "institucion_logo").first()
+        
+        # Logs para ver qué estamos recuperando
+        # print(f"GET Nombre encontrado: {c_nombre.value_json if c_nombre else 'No'}")
+
+        return {
+            "nombre": json.loads(c_nombre.value_json) if c_nombre else "",
+            "direccion": json.loads(c_dir.value_json) if c_dir else "",
+            "logo_base64": json.loads(c_logo.value_json) if c_logo else None
+        }
+    except Exception as e:
+        print(f"Error al leer configuración: {e}")
+        return {"nombre": "", "direccion": "", "logo_base64": None}
+    
+    # --- AGREGAR EN main.py (Junto a los otros endpoints de horarios) ---
+
+@app.get("/api/horarios/profesor/{pid}")
+def get_horario_profesor_admin(pid: str, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    # Buscamos todas las asignaciones de ESTE profesor
+    asigs = db.query(AsignacionDB).options(
+        joinedload(AsignacionDB.curso), 
+        joinedload(AsignacionDB.materia), 
+        joinedload(AsignacionDB.aula)
+    ).filter(AsignacionDB.profesor_id == pid).all()
+    
+    grilla = {}
+    for a in asigs:
+        # Estructura: grilla[hora][dia] = "Materia (Curso) [Aula]"
+        if a.hora_rango not in grilla: grilla[a.hora_rango] = {}
+        
+        texto_curso = f"{a.curso.anio} {a.curso.division}" if a.curso else "?"
+        texto_materia = a.materia.nombre if a.materia else "?"
+        texto_aula = f" [{a.aula.nombre}]" if a.aula else ""
+        
+        grilla[a.hora_rango][a.dia] = {
+            "texto": f"{texto_materia}\n({texto_curso}){texto_aula}",
+            "materia": texto_materia,
+            "curso": texto_curso,
+            "aula": a.aula.nombre if a.aula else "-"
+        }
+    return grilla
+
+# --- AGREGAR EN main.py (Sección Profesores) ---
+
+@app.put("/api/profesores/{pid}")
+def actualizar_profesor(pid: str, p: Profesor, db: Session = Depends(get_db), u=Depends(get_current_admin_user)):
+    profe = db.query(ProfesorDB).filter(ProfesorDB.id == pid).first()
+    if not profe: 
+        raise HTTPException(status_code=404, detail="Profesor no encontrado")
+    
+    # Actualizamos los datos
+    profe.nombre = p.nombre
+    profe.dni = p.dni
+    profe.color = p.color
+    profe.disponibilidad_json = json.dumps(p.disponibilidad)
+    
+    db.commit()
+    return {"mensaje": "Profesor actualizado correctamente"}
+
+# --- AGREGAR EN main.py (Sección Auth) ---
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str

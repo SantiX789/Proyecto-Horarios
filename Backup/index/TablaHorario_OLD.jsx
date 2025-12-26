@@ -1,7 +1,7 @@
 // FrontEnd/src/components/TablaHorario.jsx (Versión WhatsApp Ready 📸)
 import { useState, useEffect } from 'react';
 import { Table, Form, Button, Badge, Spinner } from 'react-bootstrap';
-import { apiFetch } from '../apiService';
+import { apiFetch } from '../../FrontEnd/src/apiService';
 import { toast } from 'react-toastify';
 
 // Librerías de Exportación

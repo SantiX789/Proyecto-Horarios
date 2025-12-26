@@ -22,13 +22,14 @@
 
 * { box-sizing: border-box; }
 
-body { 
-  margin: 0; 
-  font-family: 'Manrope', sans-serif; 
-  background: var(--bg-body); 
-  color: var(--text-main); 
-  height: 100vh; 
-  overflow: hidden; /* Importante para que el scroll sea interno */
+/* index.css */
+body {
+  margin: 0;
+  /* NO pongas 'height: 100vh' aquí */
+  /* NO pongas 'overflow: hidden' aquí */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: #f8f9fa;
+  color: #212529;
 }
 
 /* Reset básico para inputs y botones de React Bootstrap si los usas */
@@ -219,4 +220,394 @@ p.page-desc { margin: 5px 0 0 0; color: var(--text-muted); font-size: 0.95rem; }
 }
 .modal-footer {
   border-top: 1px solid var(--border) !important;
+}
+
+.schedule-container {
+    overflow-x: auto; /* Permite scroll lateral si es muy ancha */
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: white;
+    /* Sombras sutiles para darle profundidad */
+    box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.03); 
+}
+
+.schedule-grid {
+    display: grid;
+    /* Definición de columnas:
+       - 1ra col: 80px fijo (para la hora)
+       - Resto: 5 columnas iguales (1fr) para Lunes a Viernes
+    */
+    grid-template-columns: 80px repeat(5, 1fr); 
+    gap: 1px; /* Espacio de 1px entre celdas para dibujar las líneas */
+    background-color: var(--border); /* El color de fondo se ve en los huecos (líneas) */
+    border: 1px solid var(--border);
+    min-width: 800px; /* Ancho mínimo para que no se apriete mucho */
+}
+
+/* Headers (Días de la semana) */
+.sch-header {
+    background-color: #f8fafc;
+    color: var(--text-muted);
+    font-weight: 800;
+    text-align: center;
+    padding: 12px 5px;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Celdas generales */
+.sch-cell {
+    background-color: white;
+    min-height: 75px; /* Altura generosa para cada bloque horario */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Columna de la izquierda (Horas) */
+.sch-hour {
+    justify-content: center;
+    align-items: center;
+    font-weight: 700;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    background-color: #f9fafb; /* Ligeramente gris */
+}
+
+/* El bloque de color dentro de la celda (La materia) */
+.class-block {
+    padding: 6px 8px;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    transition: all 0.2s;
+    cursor: default;
+    border-left-width: 4px; /* Borde izquierdo grueso de color */
+    border-left-style: solid;
+}
+
+.class-block:hover {
+    filter: brightness(0.97); /* Efecto sutil al pasar el mouse */
+}
+
+.aula-badge {
+    font-size: 0.7rem;
+    color: var(--text-main);
+    margin-top: 4px;
+    font-weight: 700;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* =========================================
+   PARTE 1: ESTILO CLÁSICO (Resto de la App)
+   ========================================= */
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8f9fa; /* Fondo gris suave estándar */
+  color: #212529;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+/* --- Tarjetas Clásicas (Con borde, como te gustaban antes) --- */
+.card-custom {
+  background-color: #ffffff;
+  border: 1px solid #dee2e6; /* Borde gris definido */
+  border-radius: 0.375rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* --- Botón Teal (Estándar) --- */
+.btn-teal {
+  background-color: #0d9488;
+  border: 1px solid #0d9488;
+  color: white;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.btn-teal:hover {
+  background-color: #0f766e;
+  border-color: #0f766e;
+  color: white;
+}
+
+/* --- Inputs Clásicos --- */
+.form-control, .form-select {
+  border-radius: 0.375rem; /* Bordes poco redondeados */
+  border: 1px solid #ced4da;
+}
+
+.label-custom {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  display: block;
+  color: #495057;
+}
+
+
+/* =========================================
+   PARTE 2: GRILLA MODERNA (Solo afecta a la Grilla)
+   ========================================= */
+
+/* Contenedor específico de la grilla */
+.timetable-container {
+  background-color: #F4F7F6; /* Fondo menta muy suave */
+  padding: 20px;
+  border-radius: 15px; /* Bordes redondeados SOLO en la grilla */
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  border: 1px solid #e0e7ff;
+}
+
+.schedule-grid {
+  display: grid;
+  /* 1 columna para hora + 5 columnas para días */
+  grid-template-columns: 80px repeat(5, 1fr); 
+  gap: 8px; 
+  margin-top: 20px;
+}
+
+/* Headers Modernos */
+.sch-header {
+  padding: 12px;
+  text-align: center;
+  font-weight: 800;
+  text-transform: uppercase;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  letter-spacing: 1px;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.sch-header.time-col { background-color: #9CA3AF; }
+.sch-header.day-col { background-color: #81C7C7; }
+
+/* Celdas Modernas */
+.sch-cell {
+  background-color: #EDF2F7;
+  border-radius: 8px;
+  min-height: 85px;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.sch-cell.sch-hour {
+  background-color: #D9E2EC;
+  color: #486581;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+}
+
+/* Bloques de Materia (Estilo Tarjeta Blanca con Borde de Color) */
+.class-block {
+  background-color: white;
+  border: 2px solid #66B2B2; /* Color por defecto */
+  border-left-width: 5px !important;
+  border-radius: 6px;
+  padding: 6px;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  cursor: grab;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.class-block:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.subject-text {
+  color: #2C7A7B;
+  font-weight: 800;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.profesor-text {
+  color: #718096;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.aula-badge {
+  margin-top: 2px;
+  background-color: #E6FFFA;
+  color: #38B2AC;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: bold;
+}
+
+/* =========================================
+   PARTE 3: MODO OSCURO (The Dark Side)
+   ========================================= */
+
+body.dark-mode {
+  /* --- PALETA OSCURA REDEFINIDA --- */
+  --bg-body: #0f172a;      /* Slate 900 (Fondo profundo) */
+  --card-bg: #1e293b;      /* Slate 800 (Tarjetas) */
+  
+  --text-main: #f1f5f9;    /* Blanco casi puro */
+  --text-muted: #94a3b8;   /* Gris claro */
+  
+  --border: #334155;       /* Bordes grises oscuros */
+  
+  --primary-light: #134e4a; /* Teal muy oscuro para fondos suaves */
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); /* Sombras más fuertes */
+}
+
+/* --- OVERRIDES (Forzar elementos blancos a ser oscuros) --- */
+
+/* Forzamos que el body use la variable nueva */
+body.dark-mode {
+  background-color: var(--bg-body) !important;
+  color: var(--text-main) !important;
+}
+
+/* Navbar y Tarjetas */
+body.dark-mode .navbar-custom,
+body.dark-mode .card-custom,
+body.dark-mode .step-card, 
+body.dark-mode .modal-content,
+body.dark-mode .schedule-container {
+  background: var(--card-bg) !important;
+  border-color: var(--border) !important;
+  color: var(--text-main) !important;
+}
+
+/* Inputs en modo oscuro */
+body.dark-mode .form-control, 
+body.dark-mode .form-select {
+  background-color: #020617 !important; /* Casi negro */
+  border-color: var(--border) !important;
+  color: white !important;
+}
+
+/* Tablas */
+body.dark-mode .table thead th {
+  background-color: #111827 !important; /* Gris muy oscuro */
+  color: #2dd4bf !important; /* Teal brillante */
+  border-bottom-color: var(--border) !important;
+}
+body.dark-mode .table tbody td {
+  border-bottom-color: var(--border) !important;
+  color: var(--text-muted) !important;
+}
+body.dark-mode .table-hover tbody tr:hover {
+  background-color: #334155 !important;
+}
+
+/* --- GRILLA MODERNA EN MODO OSCURO --- */
+body.dark-mode .timetable-container {
+  background-color: #1e293b; /* Igual que card-bg */
+  border-color: var(--border);
+}
+
+body.dark-mode .sch-cell {
+  background-color: #334155; /* Celda vacía oscura */
+  border-color: #475569;
+}
+
+body.dark-mode .sch-cell.sch-hour {
+  background-color: #0f172a;
+  color: #cbd5e1;
+}
+
+body.dark-mode .class-block {
+  background-color: #1e293b; /* Tarjeta de materia oscura */
+  border-color: var(--primary); /* El borde de color se mantiene */
+  color: white;
+}
+body.dark-mode .subject-text { color: #5eead4; } /* Teal neón para texto */
+body.dark-mode .profesor-text { color: #cbd5e1; }
+body.dark-mode .aula-badge { 
+  background-color: #134e4a; 
+  color: #5eead4; 
+}
+
+/* Botones del Navbar */
+body.dark-mode .nav-links { background: #334155; }
+body.dark-mode .nav-btn:hover { background: rgba(255,255,255, 0.1); color: white; }
+body.dark-mode .nav-btn.active { background: var(--bg-body); color: #5eead4; }
+body.dark-mode .user-pill { background: var(--card-bg); border-color: var(--border); color: var(--text-main); }
+body.dark-mode .user-pill:hover { background: #334155; }
+
+/* =========================================
+   PARTE 4: CORRECCIONES DE TEXTO (PARCHES)
+   ========================================= */
+
+/* 1. Forzar que todos los títulos y textos básicos sean claros */
+body.dark-mode h1, 
+body.dark-mode h2, 
+body.dark-mode h3, 
+body.dark-mode h4, 
+body.dark-mode h5, 
+body.dark-mode h6,
+body.dark-mode strong,
+body.dark-mode b {
+  color: var(--text-main) !important;
+}
+
+/* 2. Invertir las clases de Bootstrap que molestan */
+/* Si algo tiene "text-dark" (negro) en modo oscuro lo pasamos a blanco */
+body.dark-mode .text-dark {
+  color: #f8fafc !important; /* Blanco humo */
+}
+
+/* El texto "muted" (gris) hay que aclararlo un poco para que se lea sobre oscuro */
+body.dark-mode .text-muted,
+body.dark-mode .text-secondary {
+  color: #94a3b8 !important; /* Gris azulado claro */
+}
+
+/* 3. Inputs y Selects (A veces el texto queda negro sobre fondo negro) */
+body.dark-mode input, 
+body.dark-mode select, 
+body.dark-mode textarea {
+  color: white !important;
+}
+
+/* Color del texto de ayuda (placeholder) en los inputs */
+body.dark-mode ::placeholder {
+  color: #64748b !important; /* Gris medio */
+  opacity: 1;
+}
+
+/* 4. Iconos de FontAwesome (si usas <i class="text-dark">) */
+body.dark-mode i.text-dark {
+  color: white !important;
 }
